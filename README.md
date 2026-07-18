@@ -1,2 +1,0 @@
-# walkwise
-書籍や教材を、GeminiとVOICEVOXを使って歩きながら学べる音声教材へ変換するツール

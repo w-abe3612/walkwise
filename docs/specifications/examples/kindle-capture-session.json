@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "capture_session_id": "kindle-book-001-session-20260719",
+  "project_id": "database-foundations",
+  "source_id": "kindle-book-001",
+  "capture_profile_id": "kindle-win-legacy-2200x1900",
+  "usage_purpose": "personal_learning",
+  "rights_confirmation": {
+    "confirmed_by": "human",
+    "confirmed_at": "2026-07-19T00:00:00+09:00",
+    "notes": "利用者が正当に閲覧可能な書籍を個人学習目的で使用する。"
+  },
+  "status": "in_progress",
+  "last_confirmed_page_index": 1,
+  "next_page_index": 2,
+  "pages": [
+    {
+      "page_index": 1,
+      "image_path": "sources/originals/kindle-book-001/pages/page-000001.png",
+      "image_hash": {
+        "algorithm": "sha256",
+        "value": "example-sha256"
+      },
+      "perceptual_hash": null,
+      "captured_at": "2026-07-19T00:00:01+09:00",
+      "displayed_page_label": null,
+      "kindle_location": null,
+      "chapter_label": null,
+      "page_turn_attempts": 1,
+      "status": "confirmed",
+      "warnings": []
+    }
+  ]
+}

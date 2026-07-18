@@ -1,0 +1,16 @@
+{
+  "_comment": "app-management 統合草案の例。未承認。参照: 07-project-task-job-workflow.md, 12-job-monitoring-and-recovery.md",
+  "job_id": "job-0001",
+  "build_request_id": "br-0001",
+  "job_type": "tts_job",
+  "status": "running",
+  "progress": {
+    "processed": 4,
+    "total": 12,
+    "current_item": "ch01-seg005",
+    "eta_seconds": null
+  },
+  "started_at": "2026-07-19T21:00:00+09:00",
+  "finished_at": null,
+  "parent_job_id": null
+}

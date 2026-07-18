@@ -1,0 +1,49 @@
+schema_version: "1.0"
+ai_model_policy_id: default-gemini-routing
+content_revision: 1
+provider: google
+
+tiers:
+  economy_structuring:
+    model: gemini-2.5-flash-lite
+    env_override: GEMINI_MODEL_ECONOMY
+    task_types:
+      - toc_normalization
+      - topic_extraction
+      - claim_candidate_extraction
+      - format_conversion
+      - source_summary
+      - coverage_mapping
+
+  standard_generation:
+    model: gemini-2.5-flash
+    env_override: GEMINI_MODEL_STANDARD
+    task_types:
+      - curriculum_synthesis
+      - chapter_draft
+      - readability_transformation
+      - audio_adaptation
+
+  high_assurance_review:
+    model: null
+    env_override: GEMINI_MODEL_HIGH_ASSURANCE
+    required_when_invoked: true
+    task_types:
+      - source_conflict_review
+      - difficult_technical_verification
+      - final_semantic_review
+
+fallback:
+  economy_to_standard: allowed_with_warning
+  standard_to_high_assurance: explicit_escalation_only
+  high_assurance_to_standard: prohibited
+
+execution:
+  prefer_batch_for_non_interactive_bulk: true
+  cache_enabled: true
+  record_usage_metadata: true
+
+budget:
+  project_warning_usd: 5.0
+  project_stop_usd: 20.0
+  allow_high_assurance_auto_escalation: false

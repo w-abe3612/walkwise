@@ -1,0 +1,38 @@
+schema_version: "1.0"
+source_id: database-book-photos
+content_revision: 1
+title: データベース書籍 撮影画像
+
+source_strategy:
+  - licensed_reference
+
+roles:
+  - factual_evidence
+  - curriculum_structure
+
+media:
+  type: image_sequence
+  acquisition_method: camera_photo
+  page_representation: mixed
+  original_mime_types:
+    - image/jpeg
+
+rights:
+  status: user_asserted_private_use
+  usage_purpose: personal_learning
+  reviewed_by: human
+  reviewed_at: "2026-07-19T01:30:00+09:00"
+
+privacy:
+  contains_people: false
+  contains_personal_information: unknown
+  exif_location_present: true
+  export_exif_location: false
+
+original:
+  path: sources/originals/database-book-photos/images/
+  content_hash_manifest: sources/manifests/database-book-photos-image-ingestion-session.json
+
+processing:
+  profile_id: camera-book-default
+  ocr_status: pending

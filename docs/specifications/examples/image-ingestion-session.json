@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "ingestion_session_id": "database-book-photos-20260719",
+  "project_id": "database-foundations",
+  "source_id": "database-book-photos",
+  "status": "ready_for_ocr",
+  "ordering": {
+    "method": "explicit_manifest",
+    "human_preview_confirmed": true
+  },
+  "items": [
+    {
+      "image_id": "image-000001",
+      "original_path": "sources/originals/database-book-photos/images/original-000001.jpg",
+      "original_hash": "sha256:example",
+      "page_representation": "two_page_spread",
+      "page_indexes": [
+        1,
+        2
+      ],
+      "quality_flags": [
+        "perspective_correction_required"
+      ],
+      "privacy_flags": [
+        "exif_location_present"
+      ],
+      "status": "preprocessed"
+    }
+  ],
+  "ocr_handoff": [
+    {
+      "page_index": 1,
+      "image_id": "image-000001-left",
+      "original_image_id": "image-000001",
+      "image_path": "sources/preprocessed/database-book-photos/pages/page-000001.png",
+      "status": "ready_for_ocr"
+    },
+    {
+      "page_index": 2,
+      "image_id": "image-000001-right",
+      "original_image_id": "image-000001",
+      "image_path": "sources/preprocessed/database-book-photos/pages/page-000002.png",
+      "status": "ready_for_ocr"
+    }
+  ]
+}
