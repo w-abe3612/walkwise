@@ -22,3 +22,11 @@ Thumbs.db
 __pycache__/
 *.pyc
 .venv/
+
+# 生成されたソースコードダンプ
+dumps/**
+!dumps/dump_all_files.py
+!dumps/.gitkeep
+
+# リポジトリルートに誤って生成されたダンプ
+audio_book_creation_dump_*.txt
