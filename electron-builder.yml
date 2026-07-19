@@ -1,0 +1,13 @@
+appId: local.walkwise.app
+productName: Walkwise
+files:
+  - dist/**
+  - electron/**
+  - package.json
+extraResources:
+  - from: runtime
+    to: runtime
+win:
+  target:
+    - nsis
+# STEP4 scaffold: signing, licenses, runtime inventory, and hardening are implemented in TASK-RELEASE-001.

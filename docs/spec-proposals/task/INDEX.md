@@ -69,3 +69,15 @@ docs/specifications/image-material-ingestion.md
 Kindle画面キャプチャ・Kindle専用ツール、動画・授業録音の資料入力は、
 製品の恒久的対象外であり、仕様策定タスク・未承認提案のいずれとしても存在しない
 (`docs/specifications/19-application-scope-and-mvp.md` 5.5節)。
+
+## 6. 実装準備タスク切り出し
+
+承認済み仕様を実装契約へ変換するSTEP1の一覧は、次を正本とする。
+
+- [実装準備マスタープラン](100_implementation-preparation-master-plan.md)
+- [実装準備タスク一覧](IMPLEMENTATION_INDEX.md)
+
+この一覧のtaskはClaude Codeへ直接実行させない。
+MVP対象taskすべてについて、契約・テストケース、テスト空実装、ソース空実装、
+コマンド文書、`docs/tasks/`契約書、構文・import・pytest収集確認を完了し、
+人間が承認してから本実装へ進む。

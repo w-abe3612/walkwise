@@ -1,0 +1,12 @@
+services:
+  test:
+    build:
+      context: .
+      target: test
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: ["python", "-m", "pytest"]
+    environment:
+      WALKWISE_RUN_INTEGRATION_SMOKE: "0"
+      WALKWISE_RUN_INTEGRATION_LIVE: "0"

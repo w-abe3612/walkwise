@@ -29,3 +29,4 @@ __all__ = [
     "synthesize_wave",
     "text_to_voicevox_wav",
 ]
+

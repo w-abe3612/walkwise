@@ -1,0 +1,2365 @@
+{
+  "step": 7,
+  "generated_from_dump": "audio_book_creation_dump_2026-07-19_180714.txt",
+  "task_count": 54,
+  "case_count": 530,
+  "release_scope_counts": {
+    "MVP": 50,
+    "post-MVP": 3,
+    "blocked": 1
+  },
+  "external_gate_task_count": 11,
+  "planned_test_file_count": 109,
+  "current_test_file_count": 109,
+  "baseline_validation": {
+    "python_syntax": "passed",
+    "pytest_collected": 454,
+    "pytest_xfailed": 431,
+    "pytest_skipped": 23,
+    "external_connections": 0,
+    "typescript_runtime_validation": "not rerun in STEP7; tasks require npm typecheck and npm test"
+  },
+  "documentation_repair": {
+    "stale_individual_command_docs": [
+      "docs/commands/ai.md",
+      "docs/commands/approvals.md",
+      "docs/commands/artifacts.md",
+      "docs/commands/asr.md",
+      "docs/commands/audio-packaging.md",
+      "docs/commands/audio-validation.md",
+      "docs/commands/backup-restore.md",
+      "docs/commands/builds.md",
+      "docs/commands/configuration.md",
+      "docs/commands/content-generation.md",
+      "docs/commands/data-validation.md",
+      "docs/commands/database.md",
+      "docs/commands/end-to-end.md",
+      "docs/commands/environment.md",
+      "docs/commands/epub.md",
+      "docs/commands/fact-checking.md",
+      "docs/commands/images.md",
+      "docs/commands/jobs.md",
+      "docs/commands/m4b.md",
+      "docs/commands/migration.md",
+      "docs/commands/ocr.md",
+      "docs/commands/packaging.md",
+      "docs/commands/pdf.md",
+      "docs/commands/profiles.md",
+      "docs/commands/projects.md",
+      "docs/commands/regeneration.md",
+      "docs/commands/rights.md",
+      "docs/commands/source-processing.md",
+      "docs/commands/source-review.md",
+      "docs/commands/sources.md",
+      "docs/commands/storage.md",
+      "docs/commands/testing.md",
+      "docs/commands/tts.md",
+      "docs/commands/worker.md"
+    ],
+    "stale_individual_command_doc_count": 34,
+    "common_state_docs": [
+      "docs/commands/README.md",
+      "docs/commands/CURRENT_STATE.md",
+      "docs/commands/STEP6_MANIFEST.json"
+    ],
+    "ownership": {
+      "docs/commands/CURRENT_STATE.md": "TASK-DEV-001",
+      "docs/commands/README.md": "TASK-DEV-001",
+      "docs/commands/STEP6_MANIFEST.json": "TASK-DEV-001",
+      "docs/commands/ai.md": "TASK-AI-001",
+      "docs/commands/approvals.md": "TASK-APPROVAL-001",
+      "docs/commands/artifacts.md": "TASK-ARTIFACT-001",
+      "docs/commands/asr.md": "TASK-ASR-001",
+      "docs/commands/audio-packaging.md": "TASK-AUDIO-003",
+      "docs/commands/audio-validation.md": "TASK-AUDIO-002",
+      "docs/commands/backup-restore.md": "TASK-RELEASE-001",
+      "docs/commands/builds.md": "TASK-BUILD-001",
+      "docs/commands/configuration.md": "TASK-CORE-001",
+      "docs/commands/content-generation.md": "TASK-AI-003",
+      "docs/commands/data-validation.md": "TASK-CORE-002",
+      "docs/commands/database.md": "TASK-DB-001",
+      "docs/commands/end-to-end.md": "TASK-DESKTOP-003",
+      "docs/commands/environment.md": "TASK-ENV-001",
+      "docs/commands/epub.md": "TASK-EPUB-001",
+      "docs/commands/fact-checking.md": "TASK-CLAIM-001",
+      "docs/commands/images.md": "TASK-IMAGE-001",
+      "docs/commands/jobs.md": "TASK-JOB-001",
+      "docs/commands/m4b.md": "TASK-M4B-001",
+      "docs/commands/migration.md": "TASK-MIGRATION-001",
+      "docs/commands/ocr.md": "TASK-OCR-001",
+      "docs/commands/packaging.md": "TASK-RELEASE-001",
+      "docs/commands/pdf.md": "TASK-PDF-001",
+      "docs/commands/profiles.md": "TASK-PROFILE-001",
+      "docs/commands/projects.md": "TASK-PROJECT-001",
+      "docs/commands/regeneration.md": "TASK-PIPELINE-001",
+      "docs/commands/rights.md": "TASK-RIGHTS-001",
+      "docs/commands/source-processing.md": "TASK-INGEST-001",
+      "docs/commands/source-review.md": "TASK-SOURCE-003",
+      "docs/commands/sources.md": "TASK-SOURCE-001",
+      "docs/commands/storage.md": "TASK-FILE-001",
+      "docs/commands/testing.md": "TASK-DEV-001",
+      "docs/commands/tts.md": "TASK-TTS-001",
+      "docs/commands/worker.md": "TASK-WORKER-001"
+    },
+    "repair_policy": "Remove volatile per-file existence annotations; centralize measured state in CURRENT_STATE.md and STEP6_MANIFEST.json."
+  },
+  "tasks": [
+    {
+      "task_id": "TASK-DEV-001",
+      "order": 101,
+      "title": "Pythonパッケージ・pytest収集基盤",
+      "release_scope": "MVP",
+      "phase": "0. 開発基盤",
+      "depends_on": [],
+      "task_file": "docs/tasks/TASK-DEV-001-repository-and-test-baseline.md",
+      "contract_ref": "docs/test-cases/TASK-DEV-001-repository-and-test-baseline.md",
+      "test_files": [
+        "tests/test_test_environment_contract.py"
+      ],
+      "source_files": [
+        "pyproject.toml または pytest.ini",
+        "tests/conftest.py",
+        "script/__init__.py"
+      ],
+      "command_documents": [
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/CURRENT_STATE.md",
+        "docs/commands/README.md",
+        "docs/commands/STEP6_MANIFEST.json",
+        "docs/commands/testing.md"
+      ],
+      "case_ids": [
+        "TC-DEV-001-01",
+        "TC-DEV-001-02",
+        "TC-DEV-001-03",
+        "TC-DEV-001-04",
+        "TC-DEV-001-05",
+        "TC-DEV-001-06",
+        "TC-DEV-001-07",
+        "TC-DEV-001-08",
+        "TC-DEV-001-09",
+        "TC-DEV-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-ENV-001",
+      "order": 102,
+      "title": "Docker開発・テスト実行環境",
+      "release_scope": "MVP",
+      "phase": "0. 開発基盤",
+      "depends_on": [
+        "TASK-DEV-001"
+      ],
+      "task_file": "docs/tasks/TASK-ENV-001-docker-development-and-test-environment.md",
+      "contract_ref": "docs/test-cases/TASK-ENV-001-docker-development-and-test-environment.md",
+      "test_files": [
+        "tests/test_container_contract.py"
+      ],
+      "source_files": [
+        "Dockerfile",
+        "docker-compose.yml",
+        ".dockerignore"
+      ],
+      "command_documents": [
+        "docs/commands/environment.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/environment.md"
+      ],
+      "case_ids": [
+        "TC-ENV-001-01",
+        "TC-ENV-001-02",
+        "TC-ENV-001-03",
+        "TC-ENV-001-04",
+        "TC-ENV-001-05",
+        "TC-ENV-001-06",
+        "TC-ENV-001-07",
+        "TC-ENV-001-08",
+        "TC-ENV-001-09"
+      ],
+      "case_count": 9,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-CORE-001",
+      "order": 103,
+      "title": "設定・共通エラー・ログ契約",
+      "release_scope": "MVP",
+      "phase": "0. 開発基盤",
+      "depends_on": [
+        "TASK-DEV-001"
+      ],
+      "task_file": "docs/tasks/TASK-CORE-001-configuration-errors-and-logging.md",
+      "contract_ref": "docs/test-cases/TASK-CORE-001-configuration-errors-and-logging.md",
+      "test_files": [
+        "tests/test_core_config.py",
+        "tests/test_core_errors.py",
+        "tests/test_core_logging.py"
+      ],
+      "source_files": [
+        "script/core/config.py",
+        "script/core/errors.py",
+        "script/core/logging.py"
+      ],
+      "command_documents": [
+        "docs/commands/configuration.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/configuration.md"
+      ],
+      "case_ids": [
+        "TC-CORE-001-01",
+        "TC-CORE-001-02",
+        "TC-CORE-001-03",
+        "TC-CORE-001-04",
+        "TC-CORE-001-05",
+        "TC-CORE-001-06",
+        "TC-CORE-001-07",
+        "TC-CORE-001-08"
+      ],
+      "case_count": 8,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-CORE-002",
+      "order": 104,
+      "title": "共通ID・canonical hash・YAML/JSON入出力",
+      "release_scope": "MVP",
+      "phase": "0. 開発基盤",
+      "depends_on": [
+        "TASK-DEV-001",
+        "TASK-CORE-001"
+      ],
+      "task_file": "docs/tasks/TASK-CORE-002-identifiers-hashing-and-structured-files.md",
+      "contract_ref": "docs/test-cases/TASK-CORE-002-identifiers-hashing-and-structured-files.md",
+      "test_files": [
+        "tests/test_identifiers.py",
+        "tests/test_hashing.py",
+        "tests/test_serialization.py"
+      ],
+      "source_files": [
+        "script/core/identifiers.py",
+        "script/core/hashing.py",
+        "script/core/serialization.py"
+      ],
+      "command_documents": [
+        "docs/commands/data-validation.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/data-validation.md"
+      ],
+      "case_ids": [
+        "TC-CORE-002-01",
+        "TC-CORE-002-02",
+        "TC-CORE-002-03",
+        "TC-CORE-002-04",
+        "TC-CORE-002-05",
+        "TC-CORE-002-06",
+        "TC-CORE-002-07",
+        "TC-CORE-002-08"
+      ],
+      "case_count": 8,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-FILE-001",
+      "order": 105,
+      "title": "ローカルファイル永続化・Project配置・atomic write",
+      "release_scope": "MVP",
+      "phase": "0. 開発基盤",
+      "depends_on": [
+        "TASK-CORE-001",
+        "TASK-CORE-002"
+      ],
+      "task_file": "docs/tasks/TASK-FILE-001-local-file-persistence-and-project-layout.md",
+      "contract_ref": "docs/test-cases/TASK-FILE-001-local-file-persistence-and-project-layout.md",
+      "test_files": [
+        "tests/test_persistence_paths.py",
+        "tests/test_atomic_file_write.py",
+        "tests/test_project_locking.py"
+      ],
+      "source_files": [
+        "script/persistence/paths.py",
+        "script/persistence/files.py",
+        "script/persistence/locking.py"
+      ],
+      "command_documents": [
+        "docs/commands/storage.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/storage.md"
+      ],
+      "case_ids": [
+        "TC-FILE-001-01",
+        "TC-FILE-001-02",
+        "TC-FILE-001-03",
+        "TC-FILE-001-04",
+        "TC-FILE-001-05",
+        "TC-FILE-001-06",
+        "TC-FILE-001-07",
+        "TC-FILE-001-08",
+        "TC-FILE-001-09"
+      ],
+      "case_count": 9,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-DOMAIN-001",
+      "order": 106,
+      "title": "ドメインモデルと列挙値",
+      "release_scope": "MVP",
+      "phase": "0. 開発基盤",
+      "depends_on": [
+        "TASK-CORE-002"
+      ],
+      "task_file": "docs/tasks/TASK-DOMAIN-001-domain-entities-and-validation.md",
+      "contract_ref": "docs/test-cases/TASK-DOMAIN-001-domain-entities-and-validation.md",
+      "test_files": [
+        "tests/test_domain_models.py",
+        "tests/test_domain_validation.py"
+      ],
+      "source_files": [
+        "script/domain/models.py",
+        "script/domain/enums.py",
+        "script/domain/validation.py"
+      ],
+      "command_documents": [
+        "docs/commands/data-validation.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-DOMAIN-001-01",
+        "TC-DOMAIN-001-02",
+        "TC-DOMAIN-001-03",
+        "TC-DOMAIN-001-04",
+        "TC-DOMAIN-001-05",
+        "TC-DOMAIN-001-06",
+        "TC-DOMAIN-001-07",
+        "TC-DOMAIN-001-08",
+        "TC-DOMAIN-001-09"
+      ],
+      "case_count": 9,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-DB-001",
+      "order": 107,
+      "title": "SQLite接続・migration runner・初期schema",
+      "release_scope": "MVP",
+      "phase": "1. 永続化と業務サービス",
+      "depends_on": [
+        "TASK-ENV-001",
+        "TASK-FILE-001",
+        "TASK-DOMAIN-001"
+      ],
+      "task_file": "docs/tasks/TASK-DB-001-sqlite-migrations-and-initial-schema.md",
+      "contract_ref": "docs/test-cases/TASK-DB-001-sqlite-migrations-and-initial-schema.md",
+      "test_files": [
+        "tests/test_database_connection.py",
+        "tests/test_migration_runner.py",
+        "tests/test_initial_schema.py"
+      ],
+      "source_files": [
+        "script/persistence/database.py",
+        "script/persistence/migrations.py",
+        "script/persistence/sql/0001_initial.sql"
+      ],
+      "command_documents": [
+        "docs/commands/database.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/database.md"
+      ],
+      "case_ids": [
+        "TC-DB-001-01",
+        "TC-DB-001-02",
+        "TC-DB-001-03",
+        "TC-DB-001-04",
+        "TC-DB-001-05",
+        "TC-DB-001-06",
+        "TC-DB-001-07",
+        "TC-DB-001-08",
+        "TC-DB-001-09",
+        "TC-DB-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-DB-002",
+      "order": 108,
+      "title": "Repository・transaction境界",
+      "release_scope": "MVP",
+      "phase": "1. 永続化と業務サービス",
+      "depends_on": [
+        "TASK-DB-001"
+      ],
+      "task_file": "docs/tasks/TASK-DB-002-repositories-and-unit-of-work.md",
+      "contract_ref": "docs/test-cases/TASK-DB-002-repositories-and-unit-of-work.md",
+      "test_files": [
+        "tests/test_repositories.py",
+        "tests/test_unit_of_work.py"
+      ],
+      "source_files": [
+        "script/persistence/repositories.py",
+        "script/persistence/unit_of_work.py"
+      ],
+      "command_documents": [
+        "docs/commands/database.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-DB-002-01",
+        "TC-DB-002-02",
+        "TC-DB-002-03",
+        "TC-DB-002-04",
+        "TC-DB-002-05",
+        "TC-DB-002-06",
+        "TC-DB-002-07",
+        "TC-DB-002-08"
+      ],
+      "case_count": 8,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-PROJECT-001",
+      "order": 109,
+      "title": "Project作成・一覧・取得サービス",
+      "release_scope": "MVP",
+      "phase": "1. 永続化と業務サービス",
+      "depends_on": [
+        "TASK-DB-002",
+        "TASK-FILE-001"
+      ],
+      "task_file": "docs/tasks/TASK-PROJECT-001-project-application-service.md",
+      "contract_ref": "docs/test-cases/TASK-PROJECT-001-project-application-service.md",
+      "test_files": [
+        "tests/test_project_service.py",
+        "tests/test_project_plan_schema.py"
+      ],
+      "source_files": [
+        "script/services/projects.py",
+        "script/schemas/project_plan.py"
+      ],
+      "command_documents": [
+        "docs/commands/projects.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/projects.md"
+      ],
+      "case_ids": [
+        "TC-PROJECT-001-01",
+        "TC-PROJECT-001-02",
+        "TC-PROJECT-001-03",
+        "TC-PROJECT-001-04",
+        "TC-PROJECT-001-05",
+        "TC-PROJECT-001-06",
+        "TC-PROJECT-001-07"
+      ],
+      "case_count": 7,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-SOURCE-001",
+      "order": 110,
+      "title": "Source登録・状態管理サービス",
+      "release_scope": "MVP",
+      "phase": "1. 永続化と業務サービス",
+      "depends_on": [
+        "TASK-DB-002",
+        "TASK-FILE-001",
+        "TASK-PROJECT-001"
+      ],
+      "task_file": "docs/tasks/TASK-SOURCE-001-source-metadata-service.md",
+      "contract_ref": "docs/test-cases/TASK-SOURCE-001-source-metadata-service.md",
+      "test_files": [
+        "tests/test_source_service.py",
+        "tests/test_source_status_transitions.py"
+      ],
+      "source_files": [
+        "script/services/sources.py",
+        "script/schemas/source_metadata.py"
+      ],
+      "command_documents": [
+        "docs/commands/sources.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/sources.md"
+      ],
+      "case_ids": [
+        "TC-SOURCE-001-01",
+        "TC-SOURCE-001-02",
+        "TC-SOURCE-001-03",
+        "TC-SOURCE-001-04",
+        "TC-SOURCE-001-05",
+        "TC-SOURCE-001-06",
+        "TC-SOURCE-001-07",
+        "TC-SOURCE-001-08"
+      ],
+      "case_count": 8,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-RIGHTS-001",
+      "order": 111,
+      "title": "権利・ライセンス・配布gate",
+      "release_scope": "MVP",
+      "phase": "1. 永続化と業務サービス",
+      "depends_on": [
+        "TASK-SOURCE-001"
+      ],
+      "task_file": "docs/tasks/TASK-RIGHTS-001-rights-license-and-distribution-gate.md",
+      "contract_ref": "docs/test-cases/TASK-RIGHTS-001-rights-license-and-distribution-gate.md",
+      "test_files": [
+        "tests/test_rights_gate.py",
+        "tests/test_credit_manifest.py"
+      ],
+      "source_files": [
+        "script/services/rights.py",
+        "script/schemas/rights.py"
+      ],
+      "command_documents": [
+        "docs/commands/rights.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/rights.md"
+      ],
+      "case_ids": [
+        "TC-RIGHTS-001-01",
+        "TC-RIGHTS-001-02",
+        "TC-RIGHTS-001-03",
+        "TC-RIGHTS-001-04",
+        "TC-RIGHTS-001-05",
+        "TC-RIGHTS-001-06",
+        "TC-RIGHTS-001-07",
+        "TC-RIGHTS-001-08",
+        "TC-RIGHTS-001-09",
+        "TC-RIGHTS-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-BUILD-001",
+      "order": 112,
+      "title": "Build Request作成サービス",
+      "release_scope": "MVP",
+      "phase": "1. 永続化と業務サービス",
+      "depends_on": [
+        "TASK-DB-002",
+        "TASK-PROJECT-001"
+      ],
+      "task_file": "docs/tasks/TASK-BUILD-001-build-request-service.md",
+      "contract_ref": "docs/test-cases/TASK-BUILD-001-build-request-service.md",
+      "test_files": [
+        "tests/test_build_request_service.py"
+      ],
+      "source_files": [
+        "script/services/build_requests.py"
+      ],
+      "command_documents": [
+        "docs/commands/builds.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/builds.md"
+      ],
+      "case_ids": [
+        "TC-BUILD-001-01",
+        "TC-BUILD-001-02",
+        "TC-BUILD-001-03",
+        "TC-BUILD-001-04",
+        "TC-BUILD-001-05",
+        "TC-BUILD-001-06",
+        "TC-BUILD-001-07",
+        "TC-BUILD-001-08"
+      ],
+      "case_count": 8,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-JOB-001",
+      "order": 113,
+      "title": "Job状態遷移・FIFO・再試行・stale復旧",
+      "release_scope": "MVP",
+      "phase": "1. 永続化と業務サービス",
+      "depends_on": [
+        "TASK-BUILD-001",
+        "TASK-DB-002"
+      ],
+      "task_file": "docs/tasks/TASK-JOB-001-job-lifecycle-queue-and-recovery.md",
+      "contract_ref": "docs/test-cases/TASK-JOB-001-job-lifecycle-queue-and-recovery.md",
+      "test_files": [
+        "tests/test_job_lifecycle.py",
+        "tests/test_job_queue.py",
+        "tests/test_stale_job_recovery.py"
+      ],
+      "source_files": [
+        "script/services/jobs.py",
+        "script/domain/job_state.py"
+      ],
+      "command_documents": [
+        "docs/commands/jobs.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/jobs.md"
+      ],
+      "case_ids": [
+        "TC-JOB-001-01",
+        "TC-JOB-001-02",
+        "TC-JOB-001-03",
+        "TC-JOB-001-04",
+        "TC-JOB-001-05",
+        "TC-JOB-001-06",
+        "TC-JOB-001-07",
+        "TC-JOB-001-08",
+        "TC-JOB-001-09",
+        "TC-JOB-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-ARTIFACT-001",
+      "order": 114,
+      "title": "Artifact登録・version管理",
+      "release_scope": "MVP",
+      "phase": "1. 永続化と業務サービス",
+      "depends_on": [
+        "TASK-JOB-001",
+        "TASK-FILE-001",
+        "TASK-DB-002"
+      ],
+      "task_file": "docs/tasks/TASK-ARTIFACT-001-artifact-registry-and-versioning.md",
+      "contract_ref": "docs/test-cases/TASK-ARTIFACT-001-artifact-registry-and-versioning.md",
+      "test_files": [
+        "tests/test_artifact_service.py"
+      ],
+      "source_files": [
+        "script/services/artifacts.py"
+      ],
+      "command_documents": [
+        "docs/commands/artifacts.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/artifacts.md"
+      ],
+      "case_ids": [
+        "TC-ARTIFACT-001-01",
+        "TC-ARTIFACT-001-02",
+        "TC-ARTIFACT-001-03",
+        "TC-ARTIFACT-001-04",
+        "TC-ARTIFACT-001-05",
+        "TC-ARTIFACT-001-06",
+        "TC-ARTIFACT-001-07",
+        "TC-ARTIFACT-001-08",
+        "TC-ARTIFACT-001-09"
+      ],
+      "case_count": 9,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-APPROVAL-001",
+      "order": 115,
+      "title": "4段階承認・差し戻し・無効化",
+      "release_scope": "MVP",
+      "phase": "1. 永続化と業務サービス",
+      "depends_on": [
+        "TASK-PROJECT-001",
+        "TASK-SOURCE-001",
+        "TASK-FILE-001"
+      ],
+      "task_file": "docs/tasks/TASK-APPROVAL-001-approval-workflow-and-invalidation.md",
+      "contract_ref": "docs/test-cases/TASK-APPROVAL-001-approval-workflow-and-invalidation.md",
+      "test_files": [
+        "tests/test_approval_workflow.py",
+        "tests/test_approval_invalidation.py"
+      ],
+      "source_files": [
+        "script/services/approvals.py",
+        "script/schemas/approvals.py"
+      ],
+      "command_documents": [
+        "docs/commands/approvals.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/approvals.md"
+      ],
+      "case_ids": [
+        "TC-APPROVAL-001-01",
+        "TC-APPROVAL-001-02",
+        "TC-APPROVAL-001-03",
+        "TC-APPROVAL-001-04",
+        "TC-APPROVAL-001-05",
+        "TC-APPROVAL-001-06",
+        "TC-APPROVAL-001-07",
+        "TC-APPROVAL-001-08",
+        "TC-APPROVAL-001-09",
+        "TC-APPROVAL-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-INGEST-001",
+      "order": 116,
+      "title": "資料入力orchestrator・テキスト入力",
+      "release_scope": "MVP",
+      "phase": "2. 資料入力",
+      "depends_on": [
+        "TASK-SOURCE-001",
+        "TASK-RIGHTS-001",
+        "TASK-JOB-001"
+      ],
+      "task_file": "docs/tasks/TASK-INGEST-001-material-input-orchestrator-and-text.md",
+      "contract_ref": "docs/test-cases/TASK-INGEST-001-material-input-orchestrator-and-text.md",
+      "test_files": [
+        "tests/test_material_input_orchestrator.py",
+        "tests/test_text_ingestion.py"
+      ],
+      "source_files": [
+        "script/source_processing/orchestrator.py",
+        "script/source_processing/text_ingestion.py"
+      ],
+      "command_documents": [
+        "docs/commands/source-processing.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/source-processing.md"
+      ],
+      "case_ids": [
+        "TC-INGEST-001-01",
+        "TC-INGEST-001-02",
+        "TC-INGEST-001-03",
+        "TC-INGEST-001-04",
+        "TC-INGEST-001-05",
+        "TC-INGEST-001-06",
+        "TC-INGEST-001-07",
+        "TC-INGEST-001-08",
+        "TC-INGEST-001-09"
+      ],
+      "case_count": 9,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-IMAGE-001",
+      "order": 117,
+      "title": "画像群登録・順序・manifest",
+      "release_scope": "MVP",
+      "phase": "2. 資料入力",
+      "depends_on": [
+        "TASK-INGEST-001"
+      ],
+      "task_file": "docs/tasks/TASK-IMAGE-001-image-material-registration-and-manifest.md",
+      "contract_ref": "docs/test-cases/TASK-IMAGE-001-image-material-registration-and-manifest.md",
+      "test_files": [
+        "tests/test_image_ingestion.py",
+        "tests/test_image_manifest.py"
+      ],
+      "source_files": [
+        "script/source_processing/images/ingestion.py",
+        "script/source_processing/images/manifest.py"
+      ],
+      "command_documents": [
+        "docs/commands/images.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/images.md"
+      ],
+      "case_ids": [
+        "TC-IMAGE-001-01",
+        "TC-IMAGE-001-02",
+        "TC-IMAGE-001-03",
+        "TC-IMAGE-001-04",
+        "TC-IMAGE-001-05",
+        "TC-IMAGE-001-06",
+        "TC-IMAGE-001-07",
+        "TC-IMAGE-001-08",
+        "TC-IMAGE-001-09",
+        "TC-IMAGE-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-IMAGE-002",
+      "order": 118,
+      "title": "画像前処理・品質flag・見開き分割",
+      "release_scope": "MVP",
+      "phase": "2. 資料入力",
+      "depends_on": [
+        "TASK-IMAGE-001"
+      ],
+      "task_file": "docs/tasks/TASK-IMAGE-002-image-preprocessing-and-quality-review.md",
+      "contract_ref": "docs/test-cases/TASK-IMAGE-002-image-preprocessing-and-quality-review.md",
+      "test_files": [
+        "tests/test_image_preprocessing.py",
+        "tests/test_image_quality_flags.py"
+      ],
+      "source_files": [
+        "script/source_processing/images/preprocess.py",
+        "script/source_processing/images/quality.py"
+      ],
+      "command_documents": [
+        "docs/commands/images.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-IMAGE-002-01",
+        "TC-IMAGE-002-02",
+        "TC-IMAGE-002-03",
+        "TC-IMAGE-002-04",
+        "TC-IMAGE-002-05",
+        "TC-IMAGE-002-06",
+        "TC-IMAGE-002-07",
+        "TC-IMAGE-002-08"
+      ],
+      "case_count": 8,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-PDF-001",
+      "order": 119,
+      "title": "PDF直接テキスト抽出",
+      "release_scope": "MVP",
+      "phase": "2. 資料入力",
+      "depends_on": [
+        "TASK-INGEST-001"
+      ],
+      "task_file": "docs/tasks/TASK-PDF-001-pdf-direct-text-extraction.md",
+      "contract_ref": "docs/test-cases/TASK-PDF-001-pdf-direct-text-extraction.md",
+      "test_files": [
+        "tests/test_pdf_direct_extraction.py",
+        "tests/test_pdf_extraction_fallback.py"
+      ],
+      "source_files": [
+        "script/source_processing/pdf/extract.py",
+        "script/source_processing/pdf/models.py"
+      ],
+      "command_documents": [
+        "docs/commands/pdf.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/pdf.md"
+      ],
+      "case_ids": [
+        "TC-PDF-001-01",
+        "TC-PDF-001-02",
+        "TC-PDF-001-03",
+        "TC-PDF-001-04",
+        "TC-PDF-001-05",
+        "TC-PDF-001-06",
+        "TC-PDF-001-07",
+        "TC-PDF-001-08",
+        "TC-PDF-001-09",
+        "TC-PDF-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-OCR-001",
+      "order": 120,
+      "title": "OCR・スキャンPDF処理",
+      "release_scope": "MVP",
+      "phase": "2. 資料入力",
+      "depends_on": [
+        "TASK-IMAGE-002",
+        "TASK-PDF-001"
+      ],
+      "task_file": "docs/tasks/TASK-OCR-001-ocr-and-scanned-pdf-processing.md",
+      "contract_ref": "docs/test-cases/TASK-OCR-001-ocr-and-scanned-pdf-processing.md",
+      "test_files": [
+        "tests/test_ocr_client.py",
+        "tests/test_ocr_pipeline.py"
+      ],
+      "source_files": [
+        "script/source_processing/ocr/client.py",
+        "script/source_processing/ocr/pipeline.py"
+      ],
+      "command_documents": [
+        "docs/commands/ocr.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/ocr.md"
+      ],
+      "case_ids": [
+        "TC-OCR-001-01",
+        "TC-OCR-001-02",
+        "TC-OCR-001-03",
+        "TC-OCR-001-04",
+        "TC-OCR-001-05",
+        "TC-OCR-001-06",
+        "TC-OCR-001-07",
+        "TC-OCR-001-08",
+        "TC-OCR-001-09",
+        "TC-OCR-001-10",
+        "TC-OCR-001-11",
+        "TC-OCR-001-12"
+      ],
+      "case_count": 12,
+      "external_gate": true
+    },
+    {
+      "task_id": "TASK-SOURCE-002",
+      "order": 121,
+      "title": "資料正規化・chunk・index・manifest",
+      "release_scope": "MVP",
+      "phase": "2. 資料入力",
+      "depends_on": [
+        "TASK-INGEST-001",
+        "TASK-PDF-001",
+        "TASK-OCR-001"
+      ],
+      "task_file": "docs/tasks/TASK-SOURCE-002-source-normalization-chunking-and-index.md",
+      "contract_ref": "docs/test-cases/TASK-SOURCE-002-source-normalization-chunking-and-index.md",
+      "test_files": [
+        "tests/test_source_normalization.py",
+        "tests/test_source_chunking.py",
+        "tests/test_source_manifest.py"
+      ],
+      "source_files": [
+        "script/source_processing/normalize.py",
+        "script/source_processing/chunking.py",
+        "script/source_processing/manifests.py"
+      ],
+      "command_documents": [
+        "docs/commands/source-processing.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-SOURCE-002-01",
+        "TC-SOURCE-002-02",
+        "TC-SOURCE-002-03",
+        "TC-SOURCE-002-04",
+        "TC-SOURCE-002-05",
+        "TC-SOURCE-002-06",
+        "TC-SOURCE-002-07",
+        "TC-SOURCE-002-08",
+        "TC-SOURCE-002-09",
+        "TC-SOURCE-002-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-SOURCE-003",
+      "order": 122,
+      "title": "資料レビュー・修正差分・再処理",
+      "release_scope": "MVP",
+      "phase": "2. 資料入力",
+      "depends_on": [
+        "TASK-SOURCE-002",
+        "TASK-SOURCE-001"
+      ],
+      "task_file": "docs/tasks/TASK-SOURCE-003-source-review-and-manual-correction.md",
+      "contract_ref": "docs/test-cases/TASK-SOURCE-003-source-review-and-manual-correction.md",
+      "test_files": [
+        "tests/test_source_review_service.py"
+      ],
+      "source_files": [
+        "script/services/source_review.py",
+        "script/schemas/source_review.py"
+      ],
+      "command_documents": [
+        "docs/commands/source-review.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/source-review.md"
+      ],
+      "case_ids": [
+        "TC-SOURCE-003-01",
+        "TC-SOURCE-003-02",
+        "TC-SOURCE-003-03",
+        "TC-SOURCE-003-04",
+        "TC-SOURCE-003-05",
+        "TC-SOURCE-003-06",
+        "TC-SOURCE-003-07",
+        "TC-SOURCE-003-08",
+        "TC-SOURCE-003-09",
+        "TC-SOURCE-003-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-EPUB-001",
+      "order": 123,
+      "title": "EPUBテキスト抽出",
+      "release_scope": "post-MVP",
+      "phase": "2. 資料入力",
+      "depends_on": [
+        "TASK-INGEST-001",
+        "TASK-SOURCE-002"
+      ],
+      "task_file": "docs/tasks/TASK-EPUB-001-epub-text-extraction.md",
+      "contract_ref": "docs/test-cases/TASK-EPUB-001-epub-text-extraction.md",
+      "test_files": [
+        "tests/test_epub_extraction.py"
+      ],
+      "source_files": [
+        "script/source_processing/epub/extract.py",
+        "script/source_processing/epub/models.py"
+      ],
+      "command_documents": [
+        "docs/commands/epub.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/epub.md"
+      ],
+      "case_ids": [
+        "TC-EPUB-001-01",
+        "TC-EPUB-001-02",
+        "TC-EPUB-001-03",
+        "TC-EPUB-001-04",
+        "TC-EPUB-001-05",
+        "TC-EPUB-001-06",
+        "TC-EPUB-001-07",
+        "TC-EPUB-001-08",
+        "TC-EPUB-001-09",
+        "TC-EPUB-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-AI-001",
+      "order": 124,
+      "title": "AI共通契約・Gemini adapter",
+      "release_scope": "MVP",
+      "phase": "3. 教材生成AI",
+      "depends_on": [
+        "TASK-CORE-001",
+        "TASK-CORE-002"
+      ],
+      "task_file": "docs/tasks/TASK-AI-001-ai-client-contract-and-gemini-adapter.md",
+      "contract_ref": "docs/test-cases/TASK-AI-001-ai-client-contract-and-gemini-adapter.md",
+      "test_files": [
+        "tests/test_ai_client_contract.py",
+        "tests/test_gemini_client.py"
+      ],
+      "source_files": [
+        "script/ai_clients/base.py",
+        "script/ai_clients/gemini/client.py",
+        "script/ai_clients/registry.py"
+      ],
+      "command_documents": [
+        "docs/commands/ai.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/ai.md"
+      ],
+      "case_ids": [
+        "TC-AI-001-01",
+        "TC-AI-001-02",
+        "TC-AI-001-03",
+        "TC-AI-001-04",
+        "TC-AI-001-05",
+        "TC-AI-001-06",
+        "TC-AI-001-07",
+        "TC-AI-001-08",
+        "TC-AI-001-09",
+        "TC-AI-001-10",
+        "TC-AI-001-11",
+        "TC-AI-001-12"
+      ],
+      "case_count": 12,
+      "external_gate": true
+    },
+    {
+      "task_id": "TASK-AI-002",
+      "order": 125,
+      "title": "AIモデルrouting・cache・費用・予算停止",
+      "release_scope": "MVP",
+      "phase": "3. 教材生成AI",
+      "depends_on": [
+        "TASK-AI-001",
+        "TASK-SOURCE-002"
+      ],
+      "task_file": "docs/tasks/TASK-AI-002-ai-routing-cost-cache-and-budget.md",
+      "contract_ref": "docs/test-cases/TASK-AI-002-ai-routing-cost-cache-and-budget.md",
+      "test_files": [
+        "tests/test_ai_routing.py",
+        "tests/test_ai_cache.py",
+        "tests/test_ai_budget.py"
+      ],
+      "source_files": [
+        "script/ai/routing.py",
+        "script/ai/cache.py",
+        "script/ai/budget.py"
+      ],
+      "command_documents": [
+        "docs/commands/ai.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-AI-002-01",
+        "TC-AI-002-02",
+        "TC-AI-002-03",
+        "TC-AI-002-04",
+        "TC-AI-002-05",
+        "TC-AI-002-06",
+        "TC-AI-002-07",
+        "TC-AI-002-08",
+        "TC-AI-002-09",
+        "TC-AI-002-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-AI-003",
+      "order": 126,
+      "title": "source summary・topic index・coverage map",
+      "release_scope": "MVP",
+      "phase": "3. 教材生成AI",
+      "depends_on": [
+        "TASK-AI-002",
+        "TASK-SOURCE-002"
+      ],
+      "task_file": "docs/tasks/TASK-AI-003-source-analysis-and-coverage.md",
+      "contract_ref": "docs/test-cases/TASK-AI-003-source-analysis-and-coverage.md",
+      "test_files": [
+        "tests/test_source_analysis_pipeline.py",
+        "tests/test_coverage_map.py"
+      ],
+      "source_files": [
+        "script/pipelines/source_analysis.py",
+        "script/schemas/source_analysis.py"
+      ],
+      "command_documents": [
+        "docs/commands/content-generation.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/content-generation.md"
+      ],
+      "case_ids": [
+        "TC-AI-003-01",
+        "TC-AI-003-02",
+        "TC-AI-003-03",
+        "TC-AI-003-04",
+        "TC-AI-003-05",
+        "TC-AI-003-06",
+        "TC-AI-003-07",
+        "TC-AI-003-08",
+        "TC-AI-003-09",
+        "TC-AI-003-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-CURRICULUM-001",
+      "order": 127,
+      "title": "topic map・curriculum・章仕様生成",
+      "release_scope": "MVP",
+      "phase": "3. 教材生成AI",
+      "depends_on": [
+        "TASK-AI-003",
+        "TASK-APPROVAL-001"
+      ],
+      "task_file": "docs/tasks/TASK-CURRICULUM-001-curriculum-and-chapter-spec-generation.md",
+      "contract_ref": "docs/test-cases/TASK-CURRICULUM-001-curriculum-and-chapter-spec-generation.md",
+      "test_files": [
+        "tests/test_curriculum_pipeline.py",
+        "tests/test_chapter_spec_schema.py"
+      ],
+      "source_files": [
+        "script/pipelines/curriculum.py",
+        "script/schemas/curriculum.py",
+        "script/schemas/chapter_spec.py"
+      ],
+      "command_documents": [
+        "docs/commands/content-generation.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-CURRICULUM-001-01",
+        "TC-CURRICULUM-001-02",
+        "TC-CURRICULUM-001-03",
+        "TC-CURRICULUM-001-04",
+        "TC-CURRICULUM-001-05",
+        "TC-CURRICULUM-001-06",
+        "TC-CURRICULUM-001-07",
+        "TC-CURRICULUM-001-08",
+        "TC-CURRICULUM-001-09",
+        "TC-CURRICULUM-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-SCRIPT-001",
+      "order": 128,
+      "title": "原稿segment・章初稿生成",
+      "release_scope": "MVP",
+      "phase": "3. 教材生成AI",
+      "depends_on": [
+        "TASK-CURRICULUM-001",
+        "TASK-AI-002"
+      ],
+      "task_file": "docs/tasks/TASK-SCRIPT-001-script-segments-and-draft-generation.md",
+      "contract_ref": "docs/test-cases/TASK-SCRIPT-001-script-segments-and-draft-generation.md",
+      "test_files": [
+        "tests/test_script_schema.py",
+        "tests/test_draft_generation.py"
+      ],
+      "source_files": [
+        "script/pipelines/draft_generation.py",
+        "script/schemas/script.py"
+      ],
+      "command_documents": [
+        "docs/commands/content-generation.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-SCRIPT-001-01",
+        "TC-SCRIPT-001-02",
+        "TC-SCRIPT-001-03",
+        "TC-SCRIPT-001-04",
+        "TC-SCRIPT-001-05",
+        "TC-SCRIPT-001-06",
+        "TC-SCRIPT-001-07",
+        "TC-SCRIPT-001-08",
+        "TC-SCRIPT-001-09"
+      ],
+      "case_count": 9,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-CLAIM-001",
+      "order": 129,
+      "title": "技術的主張・出典対応・fact check",
+      "release_scope": "MVP",
+      "phase": "3. 教材生成AI",
+      "depends_on": [
+        "TASK-SCRIPT-001",
+        "TASK-AI-002",
+        "TASK-SOURCE-002"
+      ],
+      "task_file": "docs/tasks/TASK-CLAIM-001-claims-evidence-and-fact-checking.md",
+      "contract_ref": "docs/test-cases/TASK-CLAIM-001-claims-evidence-and-fact-checking.md",
+      "test_files": [
+        "tests/test_claims_pipeline.py",
+        "tests/test_claim_validation.py"
+      ],
+      "source_files": [
+        "script/pipelines/claims.py",
+        "script/schemas/claims.py"
+      ],
+      "command_documents": [
+        "docs/commands/fact-checking.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/fact-checking.md"
+      ],
+      "case_ids": [
+        "TC-CLAIM-001-01",
+        "TC-CLAIM-001-02",
+        "TC-CLAIM-001-03",
+        "TC-CLAIM-001-04",
+        "TC-CLAIM-001-05",
+        "TC-CLAIM-001-06",
+        "TC-CLAIM-001-07",
+        "TC-CLAIM-001-08",
+        "TC-CLAIM-001-09",
+        "TC-CLAIM-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-PROFILE-001",
+      "order": 130,
+      "title": "Character・Voice profile読込と選択",
+      "release_scope": "MVP",
+      "phase": "3. 教材生成AI",
+      "depends_on": [
+        "TASK-CORE-002"
+      ],
+      "task_file": "docs/tasks/TASK-PROFILE-001-character-and-voice-profiles.md",
+      "contract_ref": "docs/test-cases/TASK-PROFILE-001-character-and-voice-profiles.md",
+      "test_files": [
+        "tests/test_character_profiles.py",
+        "tests/test_voice_profiles.py"
+      ],
+      "source_files": [
+        "script/profiles/characters.py",
+        "script/profiles/voices.py",
+        "script/schemas/profiles.py"
+      ],
+      "command_documents": [
+        "docs/commands/profiles.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/profiles.md"
+      ],
+      "case_ids": [
+        "TC-PROFILE-001-01",
+        "TC-PROFILE-001-02",
+        "TC-PROFILE-001-03",
+        "TC-PROFILE-001-04",
+        "TC-PROFILE-001-05",
+        "TC-PROFILE-001-06",
+        "TC-PROFILE-001-07",
+        "TC-PROFILE-001-08",
+        "TC-PROFILE-001-09"
+      ],
+      "case_count": 9,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-NARRATION-001",
+      "order": 131,
+      "title": "分かりやすさ・音声向け・character変換・最終意味検証",
+      "release_scope": "MVP",
+      "phase": "3. 教材生成AI",
+      "depends_on": [
+        "TASK-CLAIM-001",
+        "TASK-PROFILE-001",
+        "TASK-APPROVAL-001"
+      ],
+      "task_file": "docs/tasks/TASK-NARRATION-001-narration-transformations-and-verified-script.md",
+      "contract_ref": "docs/test-cases/TASK-NARRATION-001-narration-transformations-and-verified-script.md",
+      "test_files": [
+        "tests/test_narration_transformations.py",
+        "tests/test_verified_script_pipeline.py"
+      ],
+      "source_files": [
+        "script/pipelines/narration.py",
+        "script/pipelines/semantic_review.py"
+      ],
+      "command_documents": [
+        "docs/commands/content-generation.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-NARRATION-001-01",
+        "TC-NARRATION-001-02",
+        "TC-NARRATION-001-03",
+        "TC-NARRATION-001-04",
+        "TC-NARRATION-001-05",
+        "TC-NARRATION-001-06",
+        "TC-NARRATION-001-07",
+        "TC-NARRATION-001-08",
+        "TC-NARRATION-001-09",
+        "TC-NARRATION-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-PIPELINE-001",
+      "order": 132,
+      "title": "変更影響判定・部分再生成計画",
+      "release_scope": "MVP",
+      "phase": "3. 教材生成AI",
+      "depends_on": [
+        "TASK-NARRATION-001",
+        "TASK-APPROVAL-001",
+        "TASK-ARTIFACT-001"
+      ],
+      "task_file": "docs/tasks/TASK-PIPELINE-001-dependency-impact-and-partial-regeneration.md",
+      "contract_ref": "docs/test-cases/TASK-PIPELINE-001-dependency-impact-and-partial-regeneration.md",
+      "test_files": [
+        "tests/test_impact_analysis.py",
+        "tests/test_regeneration_plan.py"
+      ],
+      "source_files": [
+        "script/pipelines/impact.py",
+        "script/pipelines/regeneration.py"
+      ],
+      "command_documents": [
+        "docs/commands/regeneration.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/regeneration.md"
+      ],
+      "case_ids": [
+        "TC-PIPELINE-001-01",
+        "TC-PIPELINE-001-02",
+        "TC-PIPELINE-001-03",
+        "TC-PIPELINE-001-04",
+        "TC-PIPELINE-001-05",
+        "TC-PIPELINE-001-06",
+        "TC-PIPELINE-001-07",
+        "TC-PIPELINE-001-08",
+        "TC-PIPELINE-001-09",
+        "TC-PIPELINE-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-TTS-001",
+      "order": 133,
+      "title": "TTS共通Protocol・registry・エラー契約",
+      "release_scope": "MVP",
+      "phase": "4. TTSと成果物",
+      "depends_on": [
+        "TASK-PROFILE-001",
+        "TASK-CORE-001"
+      ],
+      "task_file": "docs/tasks/TASK-TTS-001-tts-client-interface-and-registry.md",
+      "contract_ref": "docs/test-cases/TASK-TTS-001-tts-client-interface-and-registry.md",
+      "test_files": [
+        "tests/test_tts_client_contract.py",
+        "tests/test_tts_registry.py"
+      ],
+      "source_files": [
+        "script/tts_clients/base.py",
+        "script/tts_clients/registry.py",
+        "script/tts_clients/models.py"
+      ],
+      "command_documents": [
+        "docs/commands/testing.md",
+        "docs/commands/tts.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/tts.md"
+      ],
+      "case_ids": [
+        "TC-TTS-001-01",
+        "TC-TTS-001-02",
+        "TC-TTS-001-03",
+        "TC-TTS-001-04",
+        "TC-TTS-001-05",
+        "TC-TTS-001-06",
+        "TC-TTS-001-07",
+        "TC-TTS-001-08",
+        "TC-TTS-001-09",
+        "TC-TTS-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-VOICEVOX-001",
+      "order": 134,
+      "title": "VOICEVOX adapter・話者一覧・合成",
+      "release_scope": "MVP",
+      "phase": "4. TTSと成果物",
+      "depends_on": [
+        "TASK-TTS-001"
+      ],
+      "task_file": "docs/tasks/TASK-VOICEVOX-001-voicevox-client-adapter.md",
+      "contract_ref": "docs/test-cases/TASK-VOICEVOX-001-voicevox-client-adapter.md",
+      "test_files": [
+        "tests/test_voicevox_client.py",
+        "tests/test_voicevox_adapter.py"
+      ],
+      "source_files": [
+        "script/tts_clients/voicevox/client.py",
+        "script/tts_clients/voicevox/adapter.py"
+      ],
+      "command_documents": [
+        "docs/commands/testing.md",
+        "docs/commands/tts.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-VOICEVOX-001-01",
+        "TC-VOICEVOX-001-02",
+        "TC-VOICEVOX-001-03",
+        "TC-VOICEVOX-001-04",
+        "TC-VOICEVOX-001-05",
+        "TC-VOICEVOX-001-06",
+        "TC-VOICEVOX-001-07",
+        "TC-VOICEVOX-001-08",
+        "TC-VOICEVOX-001-09",
+        "TC-VOICEVOX-001-10",
+        "TC-VOICEVOX-001-11",
+        "TC-VOICEVOX-001-12"
+      ],
+      "case_count": 12,
+      "external_gate": true
+    },
+    {
+      "task_id": "TASK-AUDIO-001",
+      "order": 135,
+      "title": "試聴・segment TTS・WAV cache",
+      "release_scope": "MVP",
+      "phase": "4. TTSと成果物",
+      "depends_on": [
+        "TASK-VOICEVOX-001",
+        "TASK-NARRATION-001",
+        "TASK-PIPELINE-001"
+      ],
+      "task_file": "docs/tasks/TASK-AUDIO-001-preview-and-segment-tts-cache.md",
+      "contract_ref": "docs/test-cases/TASK-AUDIO-001-preview-and-segment-tts-cache.md",
+      "test_files": [
+        "tests/test_audio_synthesis.py",
+        "tests/test_audio_cache.py",
+        "tests/test_audio_preview.py"
+      ],
+      "source_files": [
+        "script/audio/synthesis.py",
+        "script/audio/cache.py",
+        "script/audio/preview.py"
+      ],
+      "command_documents": [
+        "docs/commands/testing.md",
+        "docs/commands/tts.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-AUDIO-001-01",
+        "TC-AUDIO-001-02",
+        "TC-AUDIO-001-03",
+        "TC-AUDIO-001-04",
+        "TC-AUDIO-001-05",
+        "TC-AUDIO-001-06",
+        "TC-AUDIO-001-07",
+        "TC-AUDIO-001-08",
+        "TC-AUDIO-001-09",
+        "TC-AUDIO-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-AUDIO-002",
+      "order": 136,
+      "title": "音声自動検査・provisional閾値",
+      "release_scope": "MVP",
+      "phase": "4. TTSと成果物",
+      "depends_on": [
+        "TASK-AUDIO-001"
+      ],
+      "task_file": "docs/tasks/TASK-AUDIO-002-audio-validation.md",
+      "contract_ref": "docs/test-cases/TASK-AUDIO-002-audio-validation.md",
+      "test_files": [
+        "tests/test_audio_validation.py",
+        "tests/test_audio_thresholds.py"
+      ],
+      "source_files": [
+        "script/audio/validation.py",
+        "script/audio/measurements.py",
+        "script/audio/thresholds.py"
+      ],
+      "command_documents": [
+        "docs/commands/audio-validation.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/audio-validation.md"
+      ],
+      "case_ids": [
+        "TC-AUDIO-002-01",
+        "TC-AUDIO-002-02",
+        "TC-AUDIO-002-03",
+        "TC-AUDIO-002-04",
+        "TC-AUDIO-002-05",
+        "TC-AUDIO-002-06",
+        "TC-AUDIO-002-07",
+        "TC-AUDIO-002-08",
+        "TC-AUDIO-002-09",
+        "TC-AUDIO-002-10"
+      ],
+      "case_count": 10,
+      "external_gate": true
+    },
+    {
+      "task_id": "TASK-AUDIO-003",
+      "order": 137,
+      "title": "章MP3・text成果物・manifest・Build orchestration",
+      "release_scope": "MVP",
+      "phase": "4. TTSと成果物",
+      "depends_on": [
+        "TASK-AUDIO-002",
+        "TASK-ARTIFACT-001",
+        "TASK-JOB-001",
+        "TASK-BUILD-001"
+      ],
+      "task_file": "docs/tasks/TASK-AUDIO-003-chapter-packaging-manifests-and-build-orchestration.md",
+      "contract_ref": "docs/test-cases/TASK-AUDIO-003-chapter-packaging-manifests-and-build-orchestration.md",
+      "test_files": [
+        "tests/test_audio_packaging.py",
+        "tests/test_build_pipeline.py",
+        "tests/test_production_manifest.py"
+      ],
+      "source_files": [
+        "script/audio/packaging.py",
+        "script/pipelines/build.py",
+        "script/schemas/production_manifest.py"
+      ],
+      "command_documents": [
+        "docs/commands/audio-packaging.md",
+        "docs/commands/builds.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/audio-packaging.md"
+      ],
+      "case_ids": [
+        "TC-AUDIO-003-01",
+        "TC-AUDIO-003-02",
+        "TC-AUDIO-003-03",
+        "TC-AUDIO-003-04",
+        "TC-AUDIO-003-05",
+        "TC-AUDIO-003-06",
+        "TC-AUDIO-003-07",
+        "TC-AUDIO-003-08",
+        "TC-AUDIO-003-09",
+        "TC-AUDIO-003-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-M4B-001",
+      "order": 138,
+      "title": "M4B出力",
+      "release_scope": "post-MVP",
+      "phase": "4. TTSと成果物",
+      "depends_on": [
+        "TASK-AUDIO-003"
+      ],
+      "task_file": "docs/tasks/TASK-M4B-001-m4b-output.md",
+      "contract_ref": "docs/test-cases/TASK-M4B-001-m4b-output.md",
+      "test_files": [
+        "tests/test_m4b_output.py"
+      ],
+      "source_files": [
+        "script/audio/m4b.py",
+        "script/schemas/m4b_manifest.py"
+      ],
+      "command_documents": [
+        "docs/commands/m4b.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/m4b.md"
+      ],
+      "case_ids": [
+        "TC-M4B-001-01",
+        "TC-M4B-001-02",
+        "TC-M4B-001-03",
+        "TC-M4B-001-04",
+        "TC-M4B-001-05",
+        "TC-M4B-001-06",
+        "TC-M4B-001-07",
+        "TC-M4B-001-08",
+        "TC-M4B-001-09",
+        "TC-M4B-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": true
+    },
+    {
+      "task_id": "TASK-ASR-001",
+      "order": 139,
+      "title": "ASRによる原稿・音声照合",
+      "release_scope": "post-MVP",
+      "phase": "4. TTSと成果物",
+      "depends_on": [
+        "TASK-AUDIO-003"
+      ],
+      "task_file": "docs/tasks/TASK-ASR-001-asr-script-audio-verification.md",
+      "contract_ref": "docs/test-cases/TASK-ASR-001-asr-script-audio-verification.md",
+      "test_files": [
+        "tests/test_asr_verification.py"
+      ],
+      "source_files": [
+        "script/asr/base.py",
+        "script/asr/verification.py"
+      ],
+      "command_documents": [
+        "docs/commands/asr.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/asr.md"
+      ],
+      "case_ids": [
+        "TC-ASR-001-01",
+        "TC-ASR-001-02",
+        "TC-ASR-001-03",
+        "TC-ASR-001-04",
+        "TC-ASR-001-05",
+        "TC-ASR-001-06",
+        "TC-ASR-001-07",
+        "TC-ASR-001-08",
+        "TC-ASR-001-09",
+        "TC-ASR-001-10",
+        "TC-ASR-001-11",
+        "TC-ASR-001-12"
+      ],
+      "case_count": 12,
+      "external_gate": true
+    },
+    {
+      "task_id": "TASK-COEIR-001",
+      "order": 140,
+      "title": "COEIROINK adapter",
+      "release_scope": "blocked",
+      "phase": "4. TTSと成果物",
+      "depends_on": [
+        "TASK-TTS-001",
+        "TASK-PROFILE-001"
+      ],
+      "task_file": "docs/tasks/TASK-COEIR-001-coeiroink-client-adapter.md",
+      "contract_ref": "docs/test-cases/TASK-COEIR-001-coeiroink-client-adapter.md",
+      "test_files": [
+        "tests/test_coeiroink_client.py",
+        "tests/test_coeiroink_adapter.py"
+      ],
+      "source_files": [
+        "script/tts_clients/coeiroink/client.py",
+        "script/tts_clients/coeiroink/adapter.py"
+      ],
+      "command_documents": [
+        "docs/commands/testing.md",
+        "docs/commands/tts.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-COEIR-001-01",
+        "TC-COEIR-001-02",
+        "TC-COEIR-001-03",
+        "TC-COEIR-001-04",
+        "TC-COEIR-001-05",
+        "TC-COEIR-001-06",
+        "TC-COEIR-001-07",
+        "TC-COEIR-001-08",
+        "TC-COEIR-001-09",
+        "TC-COEIR-001-10",
+        "TC-COEIR-001-11",
+        "TC-COEIR-001-12"
+      ],
+      "case_count": 12,
+      "external_gate": true
+    },
+    {
+      "task_id": "TASK-WORKER-001",
+      "order": 141,
+      "title": "Python worker request dispatch・JSON Lines event",
+      "release_scope": "MVP",
+      "phase": "5. Workerとデスクトップ",
+      "depends_on": [
+        "TASK-JOB-001",
+        "TASK-AUDIO-003",
+        "TASK-AI-003"
+      ],
+      "task_file": "docs/tasks/TASK-WORKER-001-python-worker-request-and-event-protocol.md",
+      "contract_ref": "docs/test-cases/TASK-WORKER-001-python-worker-request-and-event-protocol.md",
+      "test_files": [
+        "tests/test_worker_protocol.py",
+        "tests/test_worker_dispatch.py"
+      ],
+      "source_files": [
+        "script/worker/cli.py",
+        "script/worker/protocol.py",
+        "script/worker/handlers.py"
+      ],
+      "command_documents": [
+        "docs/commands/testing.md",
+        "docs/commands/worker.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/worker.md"
+      ],
+      "case_ids": [
+        "TC-WORKER-001-01",
+        "TC-WORKER-001-02",
+        "TC-WORKER-001-03",
+        "TC-WORKER-001-04",
+        "TC-WORKER-001-05",
+        "TC-WORKER-001-06",
+        "TC-WORKER-001-07",
+        "TC-WORKER-001-08",
+        "TC-WORKER-001-09",
+        "TC-WORKER-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-WORKER-002",
+      "order": 142,
+      "title": "Python worker cancel・timeout・異常終了復旧",
+      "release_scope": "MVP",
+      "phase": "5. Workerとデスクトップ",
+      "depends_on": [
+        "TASK-WORKER-001",
+        "TASK-JOB-001"
+      ],
+      "task_file": "docs/tasks/TASK-WORKER-002-python-worker-cancel-timeout-and-recovery.md",
+      "contract_ref": "docs/test-cases/TASK-WORKER-002-python-worker-cancel-timeout-and-recovery.md",
+      "test_files": [
+        "tests/test_worker_cancellation.py",
+        "tests/test_worker_runtime_failures.py"
+      ],
+      "source_files": [
+        "script/worker/cancellation.py",
+        "script/worker/runtime.py"
+      ],
+      "command_documents": [
+        "docs/commands/testing.md",
+        "docs/commands/worker.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-WORKER-002-01",
+        "TC-WORKER-002-02",
+        "TC-WORKER-002-03",
+        "TC-WORKER-002-04",
+        "TC-WORKER-002-05",
+        "TC-WORKER-002-06",
+        "TC-WORKER-002-07",
+        "TC-WORKER-002-08",
+        "TC-WORKER-002-09",
+        "TC-WORKER-002-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-DESKTOP-001",
+      "order": 143,
+      "title": "Electron/Vue scaffold・main/preload安全境界",
+      "release_scope": "MVP",
+      "phase": "5. Workerとデスクトップ",
+      "depends_on": [
+        "TASK-ENV-001"
+      ],
+      "task_file": "docs/tasks/TASK-DESKTOP-001-electron-vue-scaffold-and-ipc-security.md",
+      "contract_ref": "docs/test-cases/TASK-DESKTOP-001-electron-vue-scaffold-and-ipc-security.md",
+      "test_files": [
+        "electron/tests/main_security.test.ts",
+        "electron/tests/preload_contract.test.ts"
+      ],
+      "source_files": [
+        "package.json",
+        "electron/main/index.ts",
+        "electron/preload/index.ts",
+        "electron/renderer/main.ts"
+      ],
+      "command_documents": [
+        "docs/commands/desktop.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-DESKTOP-001-01",
+        "TC-DESKTOP-001-02",
+        "TC-DESKTOP-001-03",
+        "TC-DESKTOP-001-04",
+        "TC-DESKTOP-001-05",
+        "TC-DESKTOP-001-06",
+        "TC-DESKTOP-001-07",
+        "TC-DESKTOP-001-08",
+        "TC-DESKTOP-001-09"
+      ],
+      "case_count": 9,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-DESKTOP-002",
+      "order": 144,
+      "title": "Electron起動時data/DB/worker bootstrap",
+      "release_scope": "MVP",
+      "phase": "5. Workerとデスクトップ",
+      "depends_on": [
+        "TASK-DESKTOP-001",
+        "TASK-DB-001",
+        "TASK-WORKER-002"
+      ],
+      "task_file": "docs/tasks/TASK-DESKTOP-002-electron-data-db-and-worker-bootstrap.md",
+      "contract_ref": "docs/test-cases/TASK-DESKTOP-002-electron-data-db-and-worker-bootstrap.md",
+      "test_files": [
+        "electron/tests/bootstrap.test.ts",
+        "electron/tests/worker_manager.test.ts"
+      ],
+      "source_files": [
+        "electron/main/bootstrap.ts",
+        "electron/main/database.ts",
+        "electron/main/worker_manager.ts"
+      ],
+      "command_documents": [
+        "docs/commands/database.md",
+        "docs/commands/desktop.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-DESKTOP-002-01",
+        "TC-DESKTOP-002-02",
+        "TC-DESKTOP-002-03",
+        "TC-DESKTOP-002-04",
+        "TC-DESKTOP-002-05",
+        "TC-DESKTOP-002-06",
+        "TC-DESKTOP-002-07",
+        "TC-DESKTOP-002-08",
+        "TC-DESKTOP-002-09",
+        "TC-DESKTOP-002-10",
+        "TC-DESKTOP-002-11",
+        "TC-DESKTOP-002-12"
+      ],
+      "case_count": 12,
+      "external_gate": true
+    },
+    {
+      "task_id": "TASK-UI-001",
+      "order": 145,
+      "title": "Project一覧・新規作成画面",
+      "release_scope": "MVP",
+      "phase": "5. Workerとデスクトップ",
+      "depends_on": [
+        "TASK-DESKTOP-002",
+        "TASK-PROJECT-001"
+      ],
+      "task_file": "docs/tasks/TASK-UI-001-project-list-and-create-screen.md",
+      "contract_ref": "docs/test-cases/TASK-UI-001-project-list-and-create-screen.md",
+      "test_files": [
+        "electron/tests/project_ipc.test.ts",
+        "electron/renderer/tests/ProjectList.test.ts"
+      ],
+      "source_files": [
+        "electron/main/ipc/projects.ts",
+        "electron/renderer/screens/ProjectList.vue",
+        "electron/renderer/api/projects.ts"
+      ],
+      "command_documents": [
+        "docs/commands/desktop.md",
+        "docs/commands/testing.md",
+        "docs/commands/ui.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-UI-001-01",
+        "TC-UI-001-02",
+        "TC-UI-001-03",
+        "TC-UI-001-04",
+        "TC-UI-001-05",
+        "TC-UI-001-06",
+        "TC-UI-001-07",
+        "TC-UI-001-08",
+        "TC-UI-001-09"
+      ],
+      "case_count": 9,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-UI-002",
+      "order": 146,
+      "title": "Project workspace・Source登録/レビュー・承認UI",
+      "release_scope": "MVP",
+      "phase": "5. Workerとデスクトップ",
+      "depends_on": [
+        "TASK-DESKTOP-002",
+        "TASK-SOURCE-003",
+        "TASK-APPROVAL-001"
+      ],
+      "task_file": "docs/tasks/TASK-UI-002-source-workspace-review-and-approval.md",
+      "contract_ref": "docs/test-cases/TASK-UI-002-source-workspace-review-and-approval.md",
+      "test_files": [
+        "electron/tests/source_approval_ipc.test.ts",
+        "electron/renderer/tests/ProjectWorkspace.test.ts"
+      ],
+      "source_files": [
+        "electron/main/ipc/sources.ts",
+        "electron/main/ipc/approvals.ts",
+        "electron/renderer/screens/ProjectWorkspace.vue"
+      ],
+      "command_documents": [
+        "docs/commands/testing.md",
+        "docs/commands/ui.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-UI-002-01",
+        "TC-UI-002-02",
+        "TC-UI-002-03",
+        "TC-UI-002-04",
+        "TC-UI-002-05",
+        "TC-UI-002-06",
+        "TC-UI-002-07",
+        "TC-UI-002-08",
+        "TC-UI-002-09"
+      ],
+      "case_count": 9,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-UI-003",
+      "order": 147,
+      "title": "出力・声設定・試聴画面",
+      "release_scope": "MVP",
+      "phase": "5. Workerとデスクトップ",
+      "depends_on": [
+        "TASK-DESKTOP-002",
+        "TASK-BUILD-001",
+        "TASK-AUDIO-001"
+      ],
+      "task_file": "docs/tasks/TASK-UI-003-build-settings-and-voice-preview-screen.md",
+      "contract_ref": "docs/test-cases/TASK-UI-003-build-settings-and-voice-preview-screen.md",
+      "test_files": [
+        "electron/tests/build_voice_ipc.test.ts",
+        "electron/renderer/tests/BuildSettings.test.ts"
+      ],
+      "source_files": [
+        "electron/main/ipc/voice.ts",
+        "electron/main/ipc/builds.ts",
+        "electron/renderer/screens/BuildSettings.vue"
+      ],
+      "command_documents": [
+        "docs/commands/testing.md",
+        "docs/commands/tts.md",
+        "docs/commands/ui.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-UI-003-01",
+        "TC-UI-003-02",
+        "TC-UI-003-03",
+        "TC-UI-003-04",
+        "TC-UI-003-05",
+        "TC-UI-003-06",
+        "TC-UI-003-07",
+        "TC-UI-003-08",
+        "TC-UI-003-09"
+      ],
+      "case_count": 9,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-UI-004",
+      "order": 148,
+      "title": "Job進捗・cancel/retry・成果物画面",
+      "release_scope": "MVP",
+      "phase": "5. Workerとデスクトップ",
+      "depends_on": [
+        "TASK-DESKTOP-002",
+        "TASK-JOB-001",
+        "TASK-ARTIFACT-001"
+      ],
+      "task_file": "docs/tasks/TASK-UI-004-job-progress-and-artifacts-screens.md",
+      "contract_ref": "docs/test-cases/TASK-UI-004-job-progress-and-artifacts-screens.md",
+      "test_files": [
+        "electron/tests/job_artifact_ipc.test.ts",
+        "electron/renderer/tests/JobsAndArtifacts.test.ts"
+      ],
+      "source_files": [
+        "electron/main/ipc/jobs.ts",
+        "electron/main/ipc/artifacts.ts",
+        "electron/renderer/screens/JobsAndArtifacts.vue"
+      ],
+      "command_documents": [
+        "docs/commands/testing.md",
+        "docs/commands/ui.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-UI-004-01",
+        "TC-UI-004-02",
+        "TC-UI-004-03",
+        "TC-UI-004-04",
+        "TC-UI-004-05",
+        "TC-UI-004-06",
+        "TC-UI-004-07",
+        "TC-UI-004-08",
+        "TC-UI-004-09"
+      ],
+      "case_count": 9,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-UI-005",
+      "order": 149,
+      "title": "Renderer共通state・navigation・error・アクセシビリティ",
+      "release_scope": "MVP",
+      "phase": "5. Workerとデスクトップ",
+      "depends_on": [
+        "TASK-UI-001",
+        "TASK-UI-002",
+        "TASK-UI-003",
+        "TASK-UI-004"
+      ],
+      "task_file": "docs/tasks/TASK-UI-005-renderer-state-routing-errors-and-accessibility.md",
+      "contract_ref": "docs/test-cases/TASK-UI-005-renderer-state-routing-errors-and-accessibility.md",
+      "test_files": [
+        "electron/renderer/tests/navigation.test.ts",
+        "electron/renderer/tests/accessibility.test.ts"
+      ],
+      "source_files": [
+        "electron/renderer/router.ts",
+        "electron/renderer/stores/app.ts",
+        "electron/renderer/components/AppShell.vue"
+      ],
+      "command_documents": [
+        "docs/commands/testing.md",
+        "docs/commands/ui.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-UI-005-01",
+        "TC-UI-005-02",
+        "TC-UI-005-03",
+        "TC-UI-005-04",
+        "TC-UI-005-05",
+        "TC-UI-005-06",
+        "TC-UI-005-07",
+        "TC-UI-005-08",
+        "TC-UI-005-09"
+      ],
+      "case_count": 9,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-DESKTOP-003",
+      "order": 150,
+      "title": "Desktop最短end-to-end導線",
+      "release_scope": "MVP",
+      "phase": "5. Workerとデスクトップ",
+      "depends_on": [
+        "TASK-UI-005",
+        "TASK-WORKER-002",
+        "TASK-AUDIO-003"
+      ],
+      "task_file": "docs/tasks/TASK-DESKTOP-003-desktop-end-to-end-integration.md",
+      "contract_ref": "docs/test-cases/TASK-DESKTOP-003-desktop-end-to-end-integration.md",
+      "test_files": [
+        "tests/integration/test_mvp_flow.py",
+        "electron/tests/e2e/mvp-flow.test.ts"
+      ],
+      "source_files": [
+        "electron/tests/e2e/mvp-flow.test.ts",
+        "script/integration/mvp_flow.py"
+      ],
+      "command_documents": [
+        "docs/commands/end-to-end.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/end-to-end.md"
+      ],
+      "case_ids": [
+        "TC-DESKTOP-003-01",
+        "TC-DESKTOP-003-02",
+        "TC-DESKTOP-003-03",
+        "TC-DESKTOP-003-04",
+        "TC-DESKTOP-003-05",
+        "TC-DESKTOP-003-06",
+        "TC-DESKTOP-003-07",
+        "TC-DESKTOP-003-08",
+        "TC-DESKTOP-003-09",
+        "TC-DESKTOP-003-10",
+        "TC-DESKTOP-003-11",
+        "TC-DESKTOP-003-12"
+      ],
+      "case_count": 12,
+      "external_gate": true
+    },
+    {
+      "task_id": "TASK-MIGRATION-001",
+      "order": 151,
+      "title": "旧形式・既存client互換adapter",
+      "release_scope": "MVP",
+      "phase": "6. 移行・品質・配布",
+      "depends_on": [
+        "TASK-CORE-002",
+        "TASK-SCRIPT-001",
+        "TASK-VOICEVOX-001"
+      ],
+      "task_file": "docs/tasks/TASK-MIGRATION-001-legacy-format-and-client-adapters.md",
+      "contract_ref": "docs/test-cases/TASK-MIGRATION-001-legacy-format-and-client-adapters.md",
+      "test_files": [
+        "tests/test_legacy_migration.py",
+        "tests/test_legacy_input_priority.py"
+      ],
+      "source_files": [
+        "script/migration/legacy_models.py",
+        "script/migration/adapters.py",
+        "script/migration/report.py"
+      ],
+      "command_documents": [
+        "docs/commands/migration.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/migration.md"
+      ],
+      "case_ids": [
+        "TC-MIGRATION-001-01",
+        "TC-MIGRATION-001-02",
+        "TC-MIGRATION-001-03",
+        "TC-MIGRATION-001-04",
+        "TC-MIGRATION-001-05",
+        "TC-MIGRATION-001-06",
+        "TC-MIGRATION-001-07",
+        "TC-MIGRATION-001-08",
+        "TC-MIGRATION-001-09",
+        "TC-MIGRATION-001-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    },
+    {
+      "task_id": "TASK-E2E-001",
+      "order": 152,
+      "title": "サンプル1章fixture・仕様間受入検証",
+      "release_scope": "MVP",
+      "phase": "6. 移行・品質・配布",
+      "depends_on": [
+        "TASK-DESKTOP-003",
+        "TASK-MIGRATION-001"
+      ],
+      "task_file": "docs/tasks/TASK-E2E-001-sample-book-fixtures-and-acceptance.md",
+      "contract_ref": "docs/test-cases/TASK-E2E-001-sample-book-fixtures-and-acceptance.md",
+      "test_files": [
+        "tests/integration/test_sample_book_e2e.py"
+      ],
+      "source_files": [
+        "tests/fixtures/sample_book/",
+        "tests/integration/test_sample_book_e2e.py"
+      ],
+      "command_documents": [
+        "docs/commands/end-to-end.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-E2E-001-01",
+        "TC-E2E-001-02",
+        "TC-E2E-001-03",
+        "TC-E2E-001-04",
+        "TC-E2E-001-05",
+        "TC-E2E-001-06",
+        "TC-E2E-001-07",
+        "TC-E2E-001-08",
+        "TC-E2E-001-09",
+        "TC-E2E-001-10",
+        "TC-E2E-001-11",
+        "TC-E2E-001-12"
+      ],
+      "case_count": 12,
+      "external_gate": true
+    },
+    {
+      "task_id": "TASK-RELEASE-001",
+      "order": 153,
+      "title": "Windows package・runtime同梱・license/privacy/backup",
+      "release_scope": "MVP",
+      "phase": "6. 移行・品質・配布",
+      "depends_on": [
+        "TASK-DESKTOP-003",
+        "TASK-ENV-001",
+        "TASK-RIGHTS-001"
+      ],
+      "task_file": "docs/tasks/TASK-RELEASE-001-windows-packaging-security-licenses-and-backup.md",
+      "contract_ref": "docs/test-cases/TASK-RELEASE-001-windows-packaging-security-licenses-and-backup.md",
+      "test_files": [
+        "electron/tests/packaging_contract.test.ts",
+        "tests/test_backup_restore.py",
+        "tests/test_license_manifest.py"
+      ],
+      "source_files": [
+        "electron-builder.yml",
+        "electron/main/runtime.ts",
+        "script/maintenance/backup.py"
+      ],
+      "command_documents": [
+        "docs/commands/backup-restore.md",
+        "docs/commands/packaging.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [
+        "docs/commands/backup-restore.md",
+        "docs/commands/packaging.md"
+      ],
+      "case_ids": [
+        "TC-RELEASE-001-01",
+        "TC-RELEASE-001-02",
+        "TC-RELEASE-001-03",
+        "TC-RELEASE-001-04",
+        "TC-RELEASE-001-05",
+        "TC-RELEASE-001-06",
+        "TC-RELEASE-001-07",
+        "TC-RELEASE-001-08",
+        "TC-RELEASE-001-09",
+        "TC-RELEASE-001-10",
+        "TC-RELEASE-001-11",
+        "TC-RELEASE-001-12"
+      ],
+      "case_count": 12,
+      "external_gate": true
+    },
+    {
+      "task_id": "TASK-RELEASE-002",
+      "order": 154,
+      "title": "性能・耐障害・最終release受入",
+      "release_scope": "MVP",
+      "phase": "6. 移行・品質・配布",
+      "depends_on": [
+        "TASK-E2E-001",
+        "TASK-RELEASE-001"
+      ],
+      "task_file": "docs/tasks/TASK-RELEASE-002-performance-resilience-and-release-acceptance.md",
+      "contract_ref": "docs/test-cases/TASK-RELEASE-002-performance-resilience-and-release-acceptance.md",
+      "test_files": [
+        "tests/performance/test_large_sources.py",
+        "tests/resilience/test_failure_recovery.py"
+      ],
+      "source_files": [
+        "tests/performance/test_large_sources.py",
+        "tests/resilience/test_failure_recovery.py",
+        "release/checklist.md"
+      ],
+      "command_documents": [
+        "docs/commands/performance.md",
+        "docs/commands/release.md",
+        "docs/commands/testing.md"
+      ],
+      "documentation_repair_ownership": [],
+      "case_ids": [
+        "TC-RELEASE-002-01",
+        "TC-RELEASE-002-02",
+        "TC-RELEASE-002-03",
+        "TC-RELEASE-002-04",
+        "TC-RELEASE-002-05",
+        "TC-RELEASE-002-06",
+        "TC-RELEASE-002-07",
+        "TC-RELEASE-002-08",
+        "TC-RELEASE-002-09",
+        "TC-RELEASE-002-10"
+      ],
+      "case_count": 10,
+      "external_gate": false
+    }
+  ]
+}

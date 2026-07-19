@@ -59,3 +59,28 @@ docs/spec-proposals/task/
 docs/tasks/
 ＝ 承認済み仕様の実装
 ```
+
+## 5. 実装準備タスク案
+
+利用者の明示指示により、承認済み仕様から実装契約へ移る前段階の
+「実装準備タスク切り出し案」も、このディレクトリで一時管理する。
+
+```text
+100_implementation-preparation-master-plan.md
+IMPLEMENTATION_INDEX.md
+101_task-...md 以降
+```
+
+これらは`docs/tasks/`に置くClaude Code実行タスクではない。
+
+```text
+docs/spec-proposals/task/
+＝ 仕様策定タスク
+＋ 人間承認前の実装準備タスク案
+
+docs/tasks/
+＝ STEP2〜STEP6と収集確認、人間承認を終えたClaude Code実行契約
+```
+
+実装準備タスク案は、STEP7で対応する`docs/tasks/TASK-...md`を作成した後、
+Git履歴を残して削除してよい。`blocked`な案は根拠が解消するまで残す。

@@ -1,39 +1,45 @@
 ---
-status: active
-version: "2.0"
+document_type: claude_code_task_directory_guide
+status: review
+version: "1.0"
 last_updated: "2026-07-19"
+generated_from_dump: "audio_book_creation_dump_2026-07-19_180714.txt"
 ---
 
-# 開発・作業タスク
+# Walkwise Claude Code実行タスク
 
-## 1. 役割
+`docs/tasks/`は、ChatGPTによる実装準備が完了した後、人間承認を経てClaude Codeへ渡す実行指示の正本である。
 
-このディレクトリには、承認済み仕様に基づく**未実行の作業指示**だけを置く。
+## 実行順
 
-## 2. 格納対象
+1. [CLAUDE_CODE_RULES.md](CLAUDE_CODE_RULES.md)を読む。
+2. [EXECUTION_ORDER.md](EXECUTION_ORDER.md)の順序と依存関係を確認する。
+3. 1回のClaude Code作業では原則1タスクだけを実行する。
+4. テスト本実装→Red確認→source本実装→対象テスト→全体回帰→文書修正の順を守る。
+5. MVP 50タスクを先に扱う。post-MVP 3タスクとblocked 1タスクは別承認まで実行しない。
 
-- 未実行の実装タスク、docs再編タスク等の作業指示書
+## 現在の準備基準
 
-## 3. 格納禁止対象
+- タスク契約: 54
+- テストケース: 530
+- 契約上のtest file: 109/109
+- Python collection: 454
+- 現在の通常実行: 431 xfailed / 23 skipped
+- 外部接続: 0
 
-- タスクの成果物(生成された仕様草案そのもの等)
-- 事前調査報告、実行報告、意思決定表、チェックリスト等のタスク実行記録
+この数値は空実装段階の基準であり、実装が進むにつれてxfailはpassへ移行する。
+タスク完了報告では、開始時・終了時の両方を記録する。
 
-成果物や実行記録は、対応する仕様(`docs/specifications/`、`docs/db/`、
-`docs/screens/`)または未承認提案(`docs/spec-proposals/`)へ格納する。
-`docs/tasks/`自体には残さない。
+## 古いコマンド文書
 
-## 4. ライフサイクル
+`docs/commands/`には、過去の「19件存在・90件欠落」状態を記録した文言が残っている。
+STEP7では修正責任を各実装タスクへ割り当てた。
 
-- タスク完了後は、そのタスクファイルを削除する。
-- 途中でblockedになった場合は削除せず、frontmatterの`status`を`blocked`へ変更し、
-  理由を同じファイルへ追記する。
-- 未実行タスクはそのまま残してよい。
-- `README.md`はディレクトリ運用ポリシーであり、タスクではないため常に残す。
-- 新しい成果報告ファイルをこのディレクトリへ作らない。完了記録はGit履歴を正本とする。
+- 共通状態とmanifest: `TASK-DEV-001`
+- 分野別文書: 最初にその文書を扱う関連タスク
+- 個別文書では揮発性の存在注記を削除し、状態は`CURRENT_STATE.md`へ集約する
 
-## 5. 命名・参照
+## 旧タスク
 
-- 仕様策定タスク(`docs/spec-proposals/task/`)と、承認済み仕様に基づく実装タスク
-  (本ディレクトリ)を混在させない。
-- タスクは根拠となる承認済み仕様を`spec_refs`で参照する。
+`16_image-material-ingestion.md`はsupersededであり、実行禁止である。
+`TASK-IMAGE-001`と`TASK-IMAGE-002`を使用する。
