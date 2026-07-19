@@ -1,8 +1,9 @@
 ---
 spec_id: rights-and-license-management
 title: "著作権・ライセンス・利用目的の管理"
-status: review
-version: "0.2"
+status: approved
+version: "1.0"
+approved_at: "2026-07-19"
 last_updated: "2026-07-19"
 generated_by:
   type: ai
@@ -13,10 +14,11 @@ depends_on:
 spec_refs:
   - material-input-pipeline.md
   - source-storage-and-common-schema.md
-  - ../specifications/audiobook-creation-pipeline.md
+  - audiobook-creation-pipeline.md
+  - 19-application-scope-and-mvp.md
 ---
 
-# 著作権・ライセンス・利用目的の管理(ドラフト)
+# 著作権・ライセンス・利用目的の管理
 
 > **本書は法律相談ではない。**
 > 本書はrights情報の記録方法、状態遷移、公開ゲートの**仕組み**を定義するものであり、
@@ -201,18 +203,9 @@ capture_or_scan:
 人物、学生名、社員名、住所、個人メモ等が含まれる場合、
 権利確認とは別にprivacy reviewを必要とする。
 
-将来の動画・授業録音ではさらに次を分離する。
-
-- 視聴・所持
-- 録画・録音
-- 文字起こし
-- AIへの外部送信
-- 教材化
-- 公開
-- 商用利用
-
-詳細案は`video-source-ingestion.md`と
-`audio-recording-source-ingestion.md`へ置く。
+動画・授業録音等を資料として取り込む機能は、製品の恒久的対象外である
+(`19-application-scope-and-mvp.md` 5.5節)。これらを対象とした権利区分の
+詳細設計は行わない。
 
 ## 6. 入力
 

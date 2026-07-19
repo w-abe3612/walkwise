@@ -1,8 +1,9 @@
 ---
 spec_id: ocr-and-scanned-pdf
 title: "OCRと画像・スキャンPDF"
-status: provisional
-version: "0.2"
+status: approved
+version: "1.0"
+approved_at: "2026-07-19"
 last_updated: "2026-07-19"
 generated_by:
   type: ai
@@ -11,15 +12,21 @@ depends_on:
   - source-storage-and-common-schema.md
 spec_refs:
   - source-storage-and-common-schema.md
-  - ../specifications/18-ai-model-routing-and-cost-control.md
+  - 18-ai-model-routing-and-cost-control.md
+  - 19-application-scope-and-mvp.md
+  - rights-and-license-management.md
+  - pdf-direct-text-extraction.md
 ---
 
-# OCRと画像・スキャンPDF(ドラフト)
+# OCRと画像・スキャンPDF
 
 > **状態に関する注記**
-> OCRエンジンの実行・比較(Tesseract等)、画像サンプルでのbenchmarkは
-> 夜間実行では行っていない(パッケージインストール・実行の禁止による)。
-> エンジン選定・解像度・信頼度閾値は`provisional`とする。
+> `19-application-scope-and-mvp.md`により、OCR処理(スキャンPDF・カメラ写真・
+> スキャナ画像)はMVP必須処理として承認済みである。必須の振る舞い(page単位処理、
+> 原画像への追跡、低信頼・高リスク要素の人間確認等)は本書で確定する。一方、
+> OCRエンジンの最終選定、解像度、信頼度閾値の具体的な数値は、代表画像による
+> benchmark実施後に確定するため、`provisional`として区別する。実測前の値を
+> 最終値として断定しない。
 
 ## 1. 目的
 
@@ -39,20 +46,20 @@ spec_refs:
 
 ## 3. 対象外
 
-- テキスト埋め込みPDFの直接抽出(→タスク09)
+- テキスト埋め込みPDFの直接抽出(→`pdf-direct-text-extraction.md`)
 - 数式・コード・表の意味的な最終確定(人間確認またはhigh assurance支援に限定)
-- Kindle画面キャプチャそのもの(→タスク12。本書はOCR処理自体を扱う)
 
 ## 4. 現行実装
 
-現行コードにOCR実装は存在しない。
+現行コードにOCR実装は存在しない。本書は仕様として承認済みであるが、
+実装コードは現時点では存在しない。
 
 ## 5. 推奨仕様
 
 ### 5.1 OCRエンジン
 
-質問1・2への回答: **既存利用実績のあるTesseractをMVP基準エンジンとし、
-交換可能なadapterを必須にする。クラウドOCRは既定にしない。**
+既存利用実績のあるTesseractをMVP基準エンジンとし、交換可能なadapterを
+必須にする。クラウドOCRは既定にしない。
 
 ```yaml
 ocr_engine_policy:
@@ -68,11 +75,11 @@ ocr_engine_policy:
 
 ローカルOCRを優先し、クラウドOCRは資料を外部送信することを意味するため、
 明示許可・rights記録がある場合だけの追加providerとする
-(`08_rights-and-license-management`のusage_purposeゲートと連動)。
+(`rights-and-license-management.md`のusage_purposeゲートと連動)。
 
 ### 5.2 ページ画像の解像度・形式
 
-質問3への回答: 通常本文は300dpi PNGを初期値とし、小さい文字・コードは
+通常本文は300dpi PNGを初期値とし、小さい文字・コードは
 必要時に400dpiを試す。**最終値はbenchmarkで確定する(provisional)。**
 
 ```yaml
@@ -87,7 +94,7 @@ page_imaging:
 
 ### 5.3 言語・縦書き
 
-質問4への回答: `jpn+eng`を基本とし、縦書きは別モード・別評価にする。
+`jpn+eng`を基本とし、縦書きは別モード・別評価にする。
 
 ```yaml
 ocr_language_modes:
@@ -100,7 +107,7 @@ ocr_language_modes:
 
 ### 5.4 数式・コード・表・図
 
-質問5への回答: **本文OCRと同じ扱いにしない。** 高リスク領域として別抽出・
+本文OCRと同じ扱いにしない。高リスク領域として別抽出・
 人間確認へ送る。
 
 ```yaml
@@ -118,8 +125,8 @@ high_risk_regions:
 
 ```json
 {
-  "chunk_id": "kindle-book-001-page-0042",
-  "source_id": "kindle-book-001",
+  "chunk_id": "example-scan-001-page-0042",
+  "source_id": "example-scan-001",
   "locator": {
     "page": 42
   },
@@ -134,8 +141,8 @@ high_risk_regions:
       {"bbox": [80, 400, 500, 460], "confidence": 0.42, "type": "formula"}
     ]
   },
-  "text_path": "sources/extracted/kindle-book-001/page-0042.md",
-  "raw_image_path": "sources/originals/kindle-book-001/page-0042.png",
+  "text_path": "sources/extracted/example-scan-001/page-0042.md",
+  "raw_image_path": "sources/originals/example-scan-001/page-0042.png",
   "warnings": ["low_confidence_region", "formula_detected"]
 }
 ```
@@ -159,11 +166,11 @@ high_risk_regions:
 | 数式・コード・表の確認支援 | `high_assurance_review`または人間 |
 
 元画像とOCR原文はAI補正で上書きしない。低リスク箇所のみeconomy層が候補を提示し、
-高リスク箇所は人間またはhigh assuranceへ送る(質問9への回答)。
+高リスク箇所は人間またはhigh assuranceへ送る。
 
 ### 5.8 トークン使用量とキャッシュ
 
-質問10への回答: `18-ai-model-routing-and-cost-control.md`のキャッシュキー
+`18-ai-model-routing-and-cost-control.md`のキャッシュキー
 (task_type, logical_tier, physical_model, prompt_id, prompt_version, input_hash,
 schema_version, generation_parameters)をOCR後処理にもそのまま適用する。
 同一ページの再OCRは、画像hashが変わらない限りcache対象とする。
@@ -172,7 +179,7 @@ schema_version, generation_parameters)をOCR後処理にもそのまま適用す
 ### 5.9 カメラ写真・スキャナ画像の前処理
 
 画像資料の登録と順序管理は
-`../specifications/image-material-ingestion.md`へ従う。
+`image-material-ingestion.md`へ従う。
 
 OCRは原画像ではなく、
 原画像へ戻れる`preprocessed page`を入力としてよい。
@@ -221,7 +228,6 @@ decoder未導入時は`unsupported_format`とする。
 ## 6. 入力
 
 - スキャン画像、または画像化されたPDFページ
-- (Kindleの場合)タスク12のキャプチャ結果
 
 ## 7. 出力
 
@@ -295,11 +301,13 @@ decoder未導入時は`unsupported_format`とする。
 - [x] 人間が確認すべき箇所が一覧化される。
 - [x] AI補正のモデル、prompt、input hashを追跡できる。
 - [x] 低リスク処理と高リスク処理を同じモデルで自動確定しない。
-- [x] 出力ドラフトが存在し、`status: provisional`である。
+- [x] MVP必須処理として承認されている。
+- [x] 未実測のエンジン・解像度・信頼度閾値は`provisional`として区別されている。
 - [x] 実装コードを変更していない。
 
-## 16. 停止・保留条件(該当状況)
+## 16. 実装時の確認事項(benchmark)
 
-- 画像サンプルなしで最終OCRエンジンを確定する必要がある → 未確定のまま`provisional`とする。
-- クラウドへ資料を送信する必要があるが許可がない → 既定でクラウドOCRを無効化する設計とした。
-- 数式・コードをAIだけで確定しそうになる → 5.4節で高リスク領域として分離済み。
+- 画像サンプルによるbenchmark実施後に最終OCRエンジンを確定する。benchmark未実施を
+  実施済みと偽らない。
+- クラウドOCRは既定で無効のままとし、許可がある場合だけ利用可能にする。
+- 数式・コードはAIだけで確定せず、5.4節の高リスク領域分離を維持する。

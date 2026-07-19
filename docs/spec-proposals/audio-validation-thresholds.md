@@ -2,7 +2,7 @@
 spec_id: audio-validation-thresholds
 title: "音声検査の最終閾値"
 status: provisional
-version: "0.1"
+version: "0.2"
 last_updated: "2026-07-19"
 generated_by:
   type: ai
@@ -14,6 +14,7 @@ spec_refs:
   - ../specifications/09-voice-profile-schema.md
   - ../specifications/audiobook-creation-pipeline.md
   - ../specifications/18-ai-model-routing-and-cost-control.md
+  - ../specifications/19-application-scope-and-mvp.md
 ---
 
 # 音声検査の最終閾値(ドラフト)
@@ -22,8 +23,10 @@ spec_refs:
 > 本書は`docs/specifications/13-audio-validation.md`が仮値として保持しているLUFS、無音、
 > 文字数毎秒などの数値を「最終確定」させるための下書きである。
 > 依存タスク`3_voice-profile-default-values.md`(話者別初期値の試聴確定)が未完了であり、
-> かつ本書自体も実測(最低3話者・正常音声/異常音声fixtureでの測定)を行っていないため、
-> 数値は**すべてprovisionalのまま**とする。`status: approved`へは進めない。
+> かつ本書自体も実測(MVP対象のVOICEVOX話者2名以上・正常音声/異常音声fixtureでの測定)を
+> 行っていないため、数値は**すべてprovisionalのまま**とする。`status: approved`へは
+> 進めない。COEIROINKはpost-MVPのため、MVPの閾値確定条件には含めない
+> (`19-application-scope-and-mvp.md`)。
 
 ## 1. 目的
 
@@ -55,8 +58,10 @@ spec_refs:
 - 同仕様の「仮設定例」(`target_lufs: -18`、`peak.maximum_dbfs: -0.5`、
   `characters_per_second: 2.0〜12.0`、`maximum_silence_seconds: 3.0`など)は
   明示的に「上記数値は仮値である」と記載されており、未実測である。
-- 実測対象話者(VOICEVOX 5名、COEIROINK 3名)は`13-audio-validation.md`で列挙済みだが、
+- 実測対象話者候補(VOICEVOX 5名、COEIROINK 3名)は`13-audio-validation.md`で列挙済みだが、
   実際の音声ファイルは本リポジトリに存在しない(`dumps/`配下はテキストダンプのみ)。
+  MVPの閾値承認にはVOICEVOX話者2名以上の実測で足り、COEIROINKの実測は
+  post-MVP対応時まで不要である(`19-application-scope-and-mvp.md`)。
 
 ## 5. 推奨仕様
 
@@ -72,7 +77,7 @@ audio_validation_thresholds:
   status: provisional
   evidence:
     measured_speakers: []          # 実測前は空
-    minimum_required_speakers: 3
+    minimum_required_speakers: 2  # MVP: VOICEVOXから2名以上
     sample_count: 0
 ```
 
@@ -153,17 +158,20 @@ audio_validation:
 
 ### 5.5 実測がない値の最終化可否
 
-質問5への回答: **最終値にしない。最低3話者の実測後にのみ`status: approved`へ進める。**
+最終値にしない。MVPの閾値承認は、VOICEVOX話者の実測後にのみ`status: approved`へ
+進める。COEIROINKはpost-MVPの追加TTS engine(`19-application-scope-and-mvp.md`)
+であるため、MVPの閾値確定をCOEIROINK実測で停止させない。
 
-昇格条件:
+MVPでの昇格条件:
 
 ```text
 measured == true
-かつ measured_speakers の人数 >= 3
-かつ VOICEVOXから2名以上
-かつ COEIROINKから1名以上
+かつ measured_speakers の人数 >= 2 (VOICEVOXから2名以上)
 かつ 誤検出(false fail)と見逃し(false pass)を人間が比較確認済み
 ```
+
+将来COEIROINK対応時は、COEIROINK向け閾値または共通閾値の適用可否を
+別途実測し、そのタイミングで閾値仕様を追加改訂する。
 
 ## 6. 入力
 
@@ -186,7 +194,7 @@ measured == true
 音声生成や試聴は行っていない。次を実測前の計画としてのみ記録する。
 
 1. fixture要件を確定する。
-   - 正常: 各エンジンから最低2話者、通常文/専門用語文/数字文/英字文をそれぞれ1件以上
+   - 正常: MVP対象のVOICEVOXから最低2話者、通常文/専門用語文/数字文/英字文をそれぞれ1件以上
    - 異常: 0秒WAV、ヘッダ破損WAV、90%以上無音、+3dBFS相当のclipping、sample rate不一致
 2. `ffprobe`(またはPython `soundfile`/`pydub`等、インストールはしない)でLUFS、
    peak、duration、無音区間を測定するコマンド仕様を定義する(10節)。
@@ -272,7 +280,7 @@ ffprobe -v error -show_entries format=duration -of json <input.wav>
 - provisional閾値でも判定ロジック自体は正しく動作する(fixtureなしでも単体テスト可能)。
 - 破損・0秒・形式不一致が常にfailになる。
 - 発音関連項目がfailではなくreview_requiredになる。
-- `evidence.sample_count`が3未満の場合、`status`を`approved`へ変更する処理が拒否される。
+- `evidence.sample_count`が2未満の場合、`status`を`approved`へ変更する処理が拒否される。
 - 話者別overrideに根拠が無い場合、共通閾値にフォールバックする。
 
 ## 15. 移行・互換性
@@ -304,5 +312,5 @@ ffprobe -v error -show_entries format=duration -of json <input.wav>
 次はいずれも本タスク実行時点で未解消であり、`docs/specifications/`への昇格は保留する。
 
 - 代表音声ファイルがリポジトリ内に存在しない。
-- 最低3話者の実測が行われていない。
+- MVP対象のVOICEVOX話者2名以上の実測が行われていない。
 - 人間による聴感評価が行われていない。

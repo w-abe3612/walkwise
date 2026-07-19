@@ -1,34 +1,34 @@
 ---
 spec_id: source-storage-and-common-schema
 title: "資料保存構成と共通資料スキーマ"
-status: review
-version: "0.2"
+status: approved
+version: "1.0"
+approved_at: "2026-07-19"
 last_updated: "2026-07-19"
 generated_by:
   type: ai
   note: "旧仕様策定タスク(完了・削除済み)により生成。Git履歴を参照。"
 depends_on:
-  - material-input-pipeline.md
   - task/2_file-persistence-operations.md
 spec_refs:
-  - ../specifications/18-ai-model-routing-and-cost-control.md
-  - ../specifications/01-common-identifiers-and-versioning.md
-  - ../specifications/17-local-data-persistence-policy.md
+  - 18-ai-model-routing-and-cost-control.md
+  - 01-common-identifiers-and-versioning.md
+  - 17-local-data-persistence-policy.md
   - material-input-pipeline.md
 ---
 
-# 資料保存構成と共通資料スキーマ(ドラフト)
+# 資料保存構成と共通資料スキーマ
 
 > **依存関係の注記**
 > 本書は`docs/spec-proposals/task/2_file-persistence-operations.md`
 > (ファイル保存運用の詳細: atomic write、ファイルロック、バックアップ世代数)への
-> 依存を宣言しているが、同タスクは本書作成時点で未着手のまま残っている
-> (`docs/spec-proposals/task/INDEX.md`参照)。
-> このため、ファイルロック・atomic write・バックアップ世代数といった
-> **書き込み手順の詳細**は本書の対象外・未決定事項として残し、
+> 依存を宣言しているが、同タスクは本書承認時点で未着手のまま残っている
+> (`docs/spec-proposals/task/INDEX.md`参照)。このため、ファイルロック・atomic write・
+> バックアップ世代数といった**書き込み手順の詳細**は本書の対象外・未決定事項として残し、
 > `17-local-data-persistence-policy.md`(承認済み・方針レベル)と
 > `01-common-identifiers-and-versioning.md`(承認済み・ID/ハッシュ規則)から
-> 導出できる範囲でのみ、資料保存構成とschemaを定義する。
+> 導出できる範囲でのみ、資料保存構成とschemaを定義する。この未決定事項は
+> 本書の承認を妨げる必須条件ではなく、別の保存運用タスクで確定する。
 
 ## 1. 目的
 
@@ -48,15 +48,17 @@ AI実行情報、索引を共通形式で保存するための、ディレクト
 ## 3. 対象外
 
 - ファイルロック方式、atomic write手順、バックアップ世代数
-  (`2_file-persistence-operations.md`未着手のため未決定事項へ送る)
-- PDF/OCR/EPUB/Kindleそれぞれの抽出アルゴリズム(→タスク09〜12)
-- 権利状態の詳細な遷移(→タスク08)
-- データベースへの移行(`17-local-data-persistence-policy.md`により初期対象外)
+  (`task/2_file-persistence-operations.md`未着手のため未決定事項へ送る)
+- PDF/OCR/EPUBそれぞれの抽出アルゴリズム(→各仕様書)
+- 権利状態の詳細な遷移(→`rights-and-license-management.md`)
+- データベースへの移行(metadataはSQLite、抽出・構造化本文はファイルが正本。
+  `17-local-data-persistence-policy.md`参照)
 
 ## 4. 現行実装
 
 現行コードには資料保存の共通schemaは存在しない。`dumps/`配下に手動配置された
 テキストダンプがあるのみで、`sources/`ディレクトリ構成も未実装である。
+本書は仕様として承認済みであるが、実装コードは現時点では存在しない。
 
 ## 5. 推奨仕様
 
@@ -88,15 +90,20 @@ data/library/<project_id>/sources/
    └─ review-required.yaml
 ```
 
-質問1(original/extracted/normalized/structuredをどう配置するか)への回答:
 プロジェクト配下の`sources/`に段階別ディレクトリを置き、`originals/`は
-**immutable**とする(基本原則5.2節)。
+**immutable**とする(基本原則5.2節)。MVPでは本ディレクトリはProject内保存に
+限定し、全Project共通の資料ライブラリ、共有Source正本、別Projectからの参照による
+重複排除はMVP対象外とする(6.1節)。
 
 ### 5.2 基本原則
 
 - `originals/`はimmutableとする。AIまたは前処理は`original`を上書きしない。
-- `normalized`は`extracted`との差分を追跡できる(タスク13の`transformation`記録を使用)。
-- `structured`はlocatorを失わない。
+- 外部ファイルはProjectのimmutableな`originals/`へコピーする。外部の元パスだけを
+  正本にしない。
+- `normalized`は`extracted`との差分を追跡できる(`source-preprocessing.md`の
+  `transformation`記録を使用)。
+- `structured`はlocatorを失わない。structured本文から元資料へ戻れない状態をError
+  とする。
 - `source summary`と`topic index`を技術的事実の最終証拠にしない
   (`audiobook-creation-pipeline.md` 7.2節と一致)。
 - 事実検証時は必ず元source chunkへ戻る。
@@ -109,12 +116,13 @@ data/library/<project_id>/sources/
 
 | 内容 | 形式 |
 |---|---|
-| source metadata、source summary、topic index、coverage map、source requirements | YAML |
-| chunk manifest、AI実行ログ | JSON/JSONL |
+| source metadata、source summary、topic index、coverage map、source requirements、rights | YAML |
+| chunk manifest、AI実行ログ、変換履歴 | JSON/JSONL |
 | structured本文 | Markdown |
 | 互換入力(既存TXTダンプ) | TXT |
 
-質問2(metadata、chunk、AI実行履歴の保存形式)への回答: 上表の通り。
+大型本文、PDF、画像、音声成果物はSQLiteへ格納しない
+(`17-local-data-persistence-policy.md`)。
 
 ### 5.4 共通資料metadata
 
@@ -159,10 +167,9 @@ indexes:
 
 ### 5.5 source locator
 
-質問3(source locatorの粒度)への回答: ページ、章、節、座標、元ファイルhashを
-可能な範囲で保持する。すべての抽出方式が座標を提供できるわけではないため、
-`page`/`chapter`/`section`/`coordinates`はすべて任意項目とし、
-**locatorが完全に空である状態だけをwarning対象**とする。
+ページ、章、節、座標、元ファイルhashを可能な範囲で保持する。すべての抽出方式が
+座標を提供できるわけではないため、`page`/`chapter`/`section`/`coordinates`は
+すべて任意項目とし、**locatorが完全に空である状態だけをwarning対象**とする。
 
 ```json
 {
@@ -183,9 +190,9 @@ indexes:
 
 ### 5.6 chunk分割の原則
 
-質問4(chunk分割の原則)への回答: 見出し・段落など意味境界を優先する。
-初期目安は**2,000〜6,000日本語文字**とし、locatorをまたぐ場合は分割する。
-この数値目安は実測に基づくものではなく、後続タスクでの調整対象とする。
+見出し・段落など意味境界を優先する。初期soft limitは約2,000日本語文字とし、
+locatorをまたぐ場合は分割する。この数値は実測に基づくものではなく、
+固定上限ではない実測後の調整対象とする。
 
 ### 5.7 source summary / topic index / coverage map / source requirements
 
@@ -239,8 +246,11 @@ topics:
 `minimum_independent_sources`を満たすことだけで資料品質を自動保証しない
 (人間による資料・カリキュラム承認が必須、`audiobook-creation-pipeline.md` 11.1節)。
 
-質問5(source summaryやtopic indexを事実根拠にしてよいか)への回答:
-**してはいけない。** 検証時は必ず元source chunkへ戻る。
+source summaryやtopic indexを事実根拠にしてはならない。検証時は必ず
+元source chunkへ戻る。
+
+source summary、topic index、coverage mapは、資料登録時に必須にしない。
+解析Jobの成功後に生成する(登録直後は空でよい)。
 
 ### 5.8 AI実行記録
 
@@ -263,7 +273,6 @@ ai_execution:
 
 AI実行情報はsource contentと分離して`reports/ai-execution.jsonl`へ記録する
 (`18-ai-model-routing-and-cost-control.md` 15節と整合)。
-
 
 ### 5.9 media・取得方法・画像manifest
 
@@ -307,32 +316,55 @@ sources/manifests/<source_id>-image-ingestion-session.json
 sources/reports/<source_id>-image-quality-report.json
 ```
 
-動画・録音の将来対応を妨げないよう、
-locatorは`page`だけに固定せず、
-将来`media_time_range`を追加可能なunion構造とする。
-現時点では動画・録音を正式schemaの必須対象にしない。
+動画・授業録音等を資料として取り込む機能は、製品の恒久的対象外である
+(`19-application-scope-and-mvp.md` 5.5節)。本schemaのlocatorや`media.type`は、
+将来これらへ拡張することを前提とした設計にしない。拡張可能性の一般的な説明を
+行う場合も、動画・録音を例として用いない。
 
-## 6. 入力
+### 5.10 同一hashの扱い
+
+同一`content_hash`を持つ資料が既に登録されている場合、重複候補として
+warningを出すが、次を行わない。
+
+- 自動統合
+- 登録のDB制約による禁止
+- 利用者の意図を確認しない削除
+- Project間の自動deduplication
+
+## 6. 保存単位
+
+### 6.1 MVPでの保存範囲
+
+MVPではProject内保存に限定する。
+
+```text
+<project-root>/sources/
+```
+
+全Project共通の資料ライブラリ、共有Source正本、別Projectからの参照による
+重複排除はMVP対象外とする。
+
+## 7. 入力
 
 - 原資料ファイル、または資料入力パイプラインの抽出・OCR結果
 - 資料戦略とsource role(`material-input-pipeline.md`より)
 
-## 7. 出力
+## 8. 出力
 
 - 5.1節のディレクトリ構成に従って保存された`sources/`一式
 - source summary、topic index、coverage map、source requirements
 - chunk manifest
 
-## 8. 正常系
+## 9. 正常系
 
 1. 原資料を`originals/<source_id>/`へ保存し、`content_hash`を記録する。
 2. 抽出結果を`extracted/`へ保存する。
 3. 正規化結果を`normalized/`へ保存し、`extracted`との差分を追跡可能にする。
 4. 構造化結果を`structured/`へchunk単位で保存し、locatorを保持する。
-5. source summary、topic index、coverage mapを生成する。
+5. 解析Job成功後、source summary、topic index、coverage mapを生成する。
 6. 別プロジェクトから同じ`source_id`を参照する(複製しない)。
 
-## 9. 異常系
+## 10. 異常系
 
 | ケース | 扱い |
 |---|---|
@@ -350,24 +382,25 @@ locatorは`page`だけに固定せず、
 | rights unverified | Warning |
 | source summaryがsource revisionより古い | Warning |
 | coverage mapがsource revisionより古い | Warning |
+| 同一hashの資料が既に存在する | Warning(自動統合・登録拒否はしない) |
 
-## 10. バリデーション
+## 11. バリデーション
 
 - `source_id`が`01-common-identifiers-and-versioning.md` 6節のID形式に適合する。
 - `content_hash`が11節の正規化手順で算出されている。
 - `schema_version`が全構造化ファイルに存在する。
 - chunk manifestの`order`が資料内で一意である。
 
-## 11. AIモデル方針
+## 12. AIモデル方針
 
 - source summary、topic index、形式変換: `economy_structuring`
 - coverage統合: `economy_structuring`または`standard_generation`
 - source conflict: `high_assurance_review`
 - 技術的事実の承認: source evidenceと人間
 
-## 12. テスト観点
+## 13. テスト観点
 
-- PDF、OCR、EPUB、Kindleを同じsource ID体系で扱える。
+- PDF、OCR、EPUBを同じsource ID体系で扱える。
 - originalからclaim locatorまで追跡できる。
 - source revision変更でindexとcacheが古くなる(warning検出)。
 - coverage missingから追加資料へ戻れる。
@@ -375,37 +408,29 @@ locatorは`page`だけに固定せず、
 - AI実行モデルとpromptを追跡できる。
 - summaryだけでclaim verificationできない。
 - 同じsourceを複数projectから参照しても複製が発生しない。
+- 同一hashの資料登録が拒否されず、warningとして記録される。
 
-## 13. 移行・互換性
+## 14. 移行・互換性
 
 - 現行実装に資料保存schemaがないため、既存データからの変換対象はない。
-- `17-local-data-persistence-policy.md`の方針(DB非使用、YAML/JSON/Markdown中心、
-  安定ID + schema_versionの付与)と整合させている。
+- `17-local-data-persistence-policy.md`の方針(metadataはSQLite、大型コンテンツは
+  ファイル、安定ID + schema_versionの付与)と整合させている。
 
-## 14. 未決定事項
+## 15. 未決定事項
 
 - ファイルロック方式、atomic write手順、バックアップ世代数
-  (`2_file-persistence-operations.md`が夜間実行対象外のため未着手)
-- chunk分割サイズ(2,000〜6,000文字)の実測による調整
+  (`task/2_file-persistence-operations.md`が未着手のため)
+- chunk分割サイズ(約2,000文字)の実測による調整
 - 大容量ファイル(画像・PDF原本)の重複排除・保存上限
 - coverage状態`partially_covered`の定量的な充足率定義
 
-## 15. 完了条件
+## 16. 完了条件
 
-- [x] すべての入力形式(PDF/OCR/EPUB/Kindle)を同じschemaへ変換できる構造になっている。
+- [x] PDF/OCR/EPUBを同じschemaへ変換できる構造になっている。
 - [x] original、extracted、normalized、structuredが分離されている。
 - [x] source locatorを維持できる。
-- [x] source summary、topic index、coverage mapを保存できる。
+- [x] source summary、topic index、coverage mapを保存できる(解析Job後生成)。
 - [x] AI実行履歴とusageを追跡できる。
 - [x] 必要chunkだけを後続へ渡せる構造になっている。
-- [x] 出力ドラフトが存在し、`status: review`である。
+- [x] 同一hashの資料を自動統合・登録拒否しない設計になっている。
 - [x] 実装コードを変更していない。
-
-## 16. 停止・保留条件(該当状況の確認)
-
-- 01番のID規則と矛盾しない(5.4節で明示的に整合)。
-- originalをAIが上書きする設計にしていない(5.2節)。
-- structuredから元位置へ戻れる(5.5節のlocator必須化)。
-
-いずれの停止条件にも該当しないため、本書は`status: review`として提出する。
-ただし、依存タスク2(ファイル保存運用)未着手分は14節の未決定事項として残す。

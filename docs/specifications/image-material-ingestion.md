@@ -2,7 +2,7 @@
 spec_id: image-material-ingestion
 title: "カメラ写真・スキャナ画像の資料入力仕様"
 status: approved
-version: "1.0"
+version: "1.1"
 approved_at: "2026-07-19"
 last_updated: "2026-07-19"
 requested_source_dump: "audio_book_creation_dump_2026-07-19_012222.txt"
@@ -11,8 +11,9 @@ spec_refs:
   - 00-specification-guidelines.md
   - 01-common-identifiers-and-versioning.md
   - 02-process-input-output.md
-  - 17-file-based-data-persistence-policy.md
+  - 17-local-data-persistence-policy.md
   - 18-ai-model-routing-and-cost-control.md
+  - 19-application-scope-and-mvp.md
 ---
 
 # カメラ写真・スキャナ画像の資料入力仕様
@@ -37,7 +38,7 @@ source_strategy
 ＝ open_fulltext / hybrid_reconstruction / licensed_reference
 
 media_type
-＝ text / pdf / epub / image_sequence / kindle_capture / ...
+＝ text / pdf / epub / image_sequence / ...
 
 acquisition_method
 ＝ camera_photo / flatbed_scanner / sheetfed_scanner /
@@ -416,15 +417,13 @@ AIへ送信する場合、原画像送信の権利・プライバシー確認を
 
 ## 18. 移行・互換性
 
-Kindle等の画面キャプチャ専用ツールが生成したページ画像は、
-`acquisition_method: kindle_capture`として扱い、
-カメラ・スキャナ画像と同一のOCR入力interfaceへ渡してよい。
-本体アプリケーションはKindleアプリの操作・座標・ページ送りを認識せず、
-専用ツールが出力した画像sequenceとmanifestだけを一般的な画像入力として受け取る
-(専用ツール側の仕様は`docs/spec-proposals/kindle-capture-separate-tool.md`)。
-
-専用ツール側のcapture sessionの正本は専用ツール側のmanifestであり、
-本仕様の画像取り込みsessionへ無断変換して上書きしない。
+利用者が任意の外部手段(スマートフォン、他のキャプチャツール等)で用意した
+ページ画像は、`acquisition_method: existing_image_file`として扱い、
+カメラ・スキャナ画像と同一のOCR入力interfaceへ渡してよい。本体アプリケーションは
+Kindleアプリその他の特定アプリの操作・座標・ページ送りを認識せず、
+一般的な画像sequenceとmanifestだけを画像入力として受け取る。Kindleアプリの操作、
+Kindle専用ツールの開発は製品の恒久的対象外である
+(`19-application-scope-and-mvp.md` 5.5節)。
 
 旧`data/library/<book_id>/pages/`の画像を読み込む場合は、
 `legacy_input: true`、旧パス、import日時、hashを記録する。

@@ -2,13 +2,13 @@
 spec_id: coeiroink-client
 title: "COEIROINKクライアント固有仕様(ドラフト・blocked)"
 status: blocked
-version: "0.3"
+version: "0.4"
 last_updated: "2026-07-19"
 merged_from:
-  - "docs/spec-proposals/12-coeiroink-client.md (v0.1、初期ドラフト)"
-  - "docs/spec-proposals/generated-specifications/12-coeiroink-client.md (v0.2)"
+  - "docs/spec-proposals/12-coeiroink-client.md (v0.1、初期ドラフト、削除済み)"
+  - "docs/spec-proposals/generated-specifications/12-coeiroink-client.md (v0.2、削除済み)"
 depends_on:
-  - 3_voice-profile-default-values.md
+  - task/3_voice-profile-default-values.md
 spec_refs:
   - ../specifications/10-tts-client-common-interface.md
   - ../specifications/11-voicevox-client.md
@@ -20,29 +20,29 @@ spec_refs:
 # COEIROINKクライアント固有仕様(ドラフト・blocked)
 
 > **状態に関する注記**
-> 本タスクの実行classは`official_evidence_required`である。COEIROINK公式サイト・
+> `19-application-scope-and-mvp.md`により、COEIROINKはpost-MVPの追加TTS engineと
+> して製品方針が確定している。初期対象話者はリリンちゃんだけとし、つくよみちゃん・
+> ディアちゃんは初期対象として列挙しない(利用者確定方針)。一方、COEIROINK公式サイト・
 > 公式リポジトリ・公式APIドキュメントへのアクセス、およびCOEIROINKサービスへの
-> 実接続を行っていない。そのため、次の事実確認が必要な項目は**すべて`evidence_gap`**
-> として未確定のまま残す。
+> 実接続はまだ行っていない。そのため、次の事実確認が必要な項目は**すべて`evidence_gap`**
+> として未確定のまま残し、本書は`status: blocked`を維持する。
 >
 > - 採用COEIROINKバージョンおよびAPI世代
 > - 既定URL、health checkエンドポイント
-> - リリンちゃん・つくよみちゃん・ディアちゃんのspeaker UUID/style ID
+> - リリンちゃんのspeaker UUID/style ID
 > - 音声ライブラリの利用条件・必須クレジット文言
-> - Docker公式イメージの有無
->
-> `19-application-scope-and-mvp.md`により、COEIROINKはMVP対象外
-> (`excluded_from_mvp: coeiroink`)であることが確定している。したがって
-> 本書はMVP完成の前提条件ではなく、MVP後の拡張候補としての未承認ドラフトである。
+> - 公式配布・同梱可否
 
 ## 1. 目的
 
 COEIROINKを、承認済みTTS共通インターフェース(`10-tts-client-common-interface.md`)へ
-適合させるためのクライアント固有仕様を定義する。対象話者は次の3名。
+適合させるためのクライアント固有仕様を定義する。post-MVPの追加TTS engineであり、
+Walkwise本体には同梱しない。利用者が別途COEIROINKをインストール・起動していることを
+前提に、Walkwiseがそれへ接続する。
+
+初期対象話者は次の1名のみとする。
 
 - リリンちゃん (`lilin-chan`)
-- つくよみちゃん (`tsukuyomi-chan`)
-- ディアちゃん (`dia-chan`)
 
 ## 2. 対象範囲
 
@@ -50,7 +50,7 @@ COEIROINKを、承認済みTTS共通インターフェース(`10-tts-client-comm
 - speaker/style識別子の解決方法(値そのものではなく、解決の**手順**)
 - capabilitiesの表現方法
 - エラー変換表
-- 起動方式の決定条件(方式そのものの断定はしない)
+- 起動方式の決定条件(Walcwise非同梱、利用者が別途起動する前提)
 - テスト観点
 
 ## 3. 対象外
@@ -60,15 +60,17 @@ COEIROINKを、承認済みTTS共通インターフェース(`10-tts-client-comm
 - 利用条件・クレジット文言の確定(evidence_gap)
 - 話者別の音声パラメータ最終値
 - DRM回避や非公式配布物の利用
-- MVPへの組み込み(`19-application-scope-and-mvp.md`によりMVP対象外)
+- MVPへの組み込み(`19-application-scope-and-mvp.md`によりMVP対象外、post-MVP機能)
+- COEIROINK自体のWalkwise配布物への同梱(利用者が別途用意する前提)
+- つくよみちゃん・ディアちゃんの初期対応(将来、利用者が追加確定した場合に再検討)
 
 ## 4. 現行実装
 
 - `script/tts_clients/coeiroink/client.py`は`CoeiroinkNotImplementedError`を送出する
   予約実装のみを持つ(`synthesize_text_to_wav`)。実装は本書では変更していない。
-- `docker-compose.yml`にCOEIROINKサービス定義は存在しない。
-- 初期ドラフトは「りりんちゃん優先、他話者は追加可能」としていたが、その後の検討で
-  3名を同格の初期対象とする方針へ更新済みである。本書はこの更新後の方針を正とする。
+- `docker-compose.yml`にCOEIROINKサービス定義は存在しない。COEIROINKはWalkwiseに
+  同梱せず、利用者が別途インストール・起動する前提であるため、非公式Docker imageを
+  前提にした同梱は行わない。
 
 ## 5. 推奨仕様(構造のみ確定、値はblocked)
 
@@ -94,10 +96,16 @@ engine_identity:
 ```
 
 `character_id`と`voice_profile_id`は、エンジンの表示名やUUIDが変わっても変更しない
-(`01-common-identifiers-and-versioning.md` 14節)。同様に`tsukuyomi-chan`・
-`dia-chan`用のプロファイル雛形を用意する。
+(`01-common-identifiers-and-versioning.md` 14節)。speaker/style IDをコードへ
+直書きせず、起動中のCOEIROINK APIの話者一覧から解決する。
 
-### 5.2 capabilities(値は未確認)
+### 5.2 音声ライブラリ未導入時の扱い
+
+リリンちゃんの音声ライブラリが導入されていない、またはCOEIROINK自体が
+起動していない場合、COEIROINKエンジンまたは該当話者だけを利用不可とし、
+VOICEVOXや他のアプリ機能全体を停止しない。
+
+### 5.3 capabilities(値は未確認)
 
 ```yaml
 supports:
@@ -113,7 +121,7 @@ limits:
 
 `conditional`項目は、実機の`/speakers`相当の応答を確認するまで`true`へ固定しない。
 
-### 5.3 共通パラメータ変換の方針
+### 5.4 共通パラメータ変換の方針
 
 `text`, `speaker_id`, `style_id`, `speed`, `pitch`, `intonation`, `volume`, `無音`,
 `出力形式`のそれぞれについて、VOICEVOXと同名でも数値の意味・範囲が同一であると
@@ -129,7 +137,7 @@ def to_coeiroink_parameters(common: SynthesisRequest) -> "CoeiroinkParameters":
     """
 ```
 
-### 5.4 エラー変換表(共通インターフェースへの対応方針)
+### 5.5 エラー変換表(共通インターフェースへの対応方針)
 
 | COEIROINK側(想定) | 共通エラー |
 |---|---|
@@ -151,21 +159,15 @@ def to_coeiroink_parameters(common: SynthesisRequest) -> "CoeiroinkParameters":
 `voice_library_not_installed`を共通エラー一覧(`10-tts-client-common-interface.md` 7節)へ
 新設するかどうかは、同仕様の変更管理下にあるため、本書だけでは決定しない。
 
-### 5.5 起動方式(決定条件のみ、選択はblocked)
+### 5.6 起動方式
 
-次の3案のいずれを採用するかは、次が確認できるまで決定しない。
+COEIROINKはWalkwiseに同梱せず、利用者が別途インストール・起動していることを
+前提に、WalkwiseはローカルAPI(例: `http://localhost:<port>`)へ接続するクライアントと
+してのみ振る舞う。docker-composeサービスとしての同梱、非公式Dockerイメージの
+前提利用は行わない。具体的な既定URL・ポートは、公式インストールガイド確認後に
+確定する(evidence_gap)。
 
-1. docker-composeサービスとして起動する。
-2. ホストOSで起動し、コンテナからhostへ接続する。
-3. 開発時だけ手動起動し、統合テストを別profileにする。
-
-判断条件:
-
-- 再現可能な公式Dockerイメージの有無
-- Windows上でのホスト起動の実運用性
-- 音声ライブラリのライセンス上、コンテナ配布が許容されるか
-
-いずれの場合も、`script/tts_clients/coeiroink/client.py`の正式実装は起動方式確定後に
+`script/tts_clients/coeiroink/client.py`の正式実装は、上記evidence_gapが解消してから
 着手する(現行の予約実装は変更しない)。
 
 ## 6. 入力
@@ -184,9 +186,9 @@ def to_coeiroink_parameters(common: SynthesisRequest) -> "CoeiroinkParameters":
 
 1. 公式ドキュメントからバージョンとAPI世代を確認し、確認日とともに記録する。
 2. 起動中のCOEIROINKへhealth checkを行う。
-3. `/speakers`相当APIから3名の識別子を解決する。
-4. リリンちゃん→つくよみちゃん→ディアちゃんの順に疎通確認する。
-5. 3名を同一の共通試聴原稿で比較する(試聴自体は人間が実施)。
+3. `/speakers`相当APIからリリンちゃんの識別子を解決する。
+4. リリンちゃんの疎通確認を行う。
+5. 共通試聴原稿で確認する(試聴自体は人間が実施)。
 
 ## 9. Evidence gap一覧
 
@@ -195,9 +197,9 @@ def to_coeiroink_parameters(common: SynthesisRequest) -> "CoeiroinkParameters":
 | 採用COEIROINKバージョン | evidence_gap | 公式サイト・公式リリースノートの確認 |
 | API世代・エンドポイント仕様 | evidence_gap | 公式APIドキュメントの確認 |
 | 既定URL | evidence_gap | 公式インストールガイドの確認 |
-| 3名のspeaker UUID/style ID | evidence_gap | 音声ライブラリ導入後、起動中APIから取得 |
-| 利用条件・クレジット文言 | evidence_gap | 各音声ライブラリ配布元の利用規約確認 |
-| Docker公式イメージの有無 | evidence_gap | 公式配布チャネルの確認 |
+| リリンちゃんのspeaker UUID/style ID | evidence_gap | 音声ライブラリ導入後、起動中APIから取得 |
+| 利用条件・クレジット文言 | evidence_gap | 音声ライブラリ配布元の利用規約確認 |
+| 公式配布・同梱可否 | evidence_gap | 公式配布チャネル・ライセンスの確認 |
 | 最大入力長・timeout推奨値 | evidence_gap | 公式ドキュメントまたは実機確認 |
 
 ## 10. 異常系
@@ -205,9 +207,8 @@ def to_coeiroink_parameters(common: SynthesisRequest) -> "CoeiroinkParameters":
 | ケース | 扱い |
 |---|---|
 | 公式資料にアクセスできない | `blocked`のまま保持(本書の状態) |
-| 音声ライブラリ未導入で識別子を確認できない | 該当話者だけ`evidence_gap`、他候補は継続検討可 |
+| COEIROINKが起動していない、または音声ライブラリ未導入 | COEIROINKまたは該当話者だけ利用不可とし、VOICEVOX・アプリ全体は継続動作する |
 | 利用条件を確認できない | 当該候補を権利未確認として扱い、公開用途を禁止 |
-| 1候補だけ利用不能 | 他の候補・エンジンまで一律停止しない |
 
 ## 11. バリデーション
 
@@ -218,12 +219,12 @@ def to_coeiroink_parameters(common: SynthesisRequest) -> "CoeiroinkParameters":
 
 ## 12. テスト観点
 
-- 3名の`character_id`/`voice_profile_id`とエンジンIDが分離して保持できる
+- `character_id`/`voice_profile_id`とエンジンIDが分離して保持できる
   (値未確定でも構造テスト可能)。
 - エラー変換表に列挙した想定COEIROINKエラーが、対応する共通エラーコードへ
   マップされる(mock前提)。
 - `voice_library_not_installed`相当の未導入状態を検出できる設計になっている。
-- 1候補の利用不能が他候補の処理を止めない。
+- COEIROINK・リリンちゃんが利用不可でも、VOICEVOXおよびアプリ全体が継続動作する。
 
 これらはmockベースの単体テストとして定義可能であり、実サービスへの接続を
 必要としない。実サービス統合テスト・手動試聴は、evidence解消後の別タスクとする。
@@ -232,22 +233,22 @@ def to_coeiroink_parameters(common: SynthesisRequest) -> "CoeiroinkParameters":
 
 - `10-tts-client-common-interface.md`のクライアント選択(`registry.get(profile.engine)`)
   機構を変更せず、`coeiroink`エンジンを追加登録する形で組み込む。
-- MVP完成後の拡張候補であり、`19-application-scope-and-mvp.md`のMVP範囲には含めない。
+- post-MVPの追加候補であり、`19-application-scope-and-mvp.md`のMVP範囲には含めない。
 
 ## 14. 未決定事項
 
 - 採用COEIROINKバージョンとAPI世代
-- Docker起動かホスト起動か
 - 既定URL、health check、話者一覧APIの実仕様
-- 3候補のspeaker/style識別子
+- リリンちゃんのspeaker/style識別子
 - 利用条件と必須クレジット
 - `voice_library_not_installed`を共通エラーへ新設するか
 - 最大入力長・timeout・リトライの推奨値
+- 公式配布・同梱可否
 
 ## 15. 昇格条件
 
 - 公式ドキュメントによりバージョン・API世代・既定URLが確認されている。
-- 音声ライブラリ導入環境でspeaker UUID/style IDが実機確認されている。
+- 音声ライブラリ導入環境でリリンちゃんのspeaker UUID/style IDが実機確認されている。
 - 利用条件・クレジット文言が確認されている。
-- 起動方式(Docker/ホスト/開発時手動)が決定されている。
+- 公式配布・同梱可否が確認されている。
 - 上記解消後、`docs/specifications/`側のTTSクライアント仕様として提案する。

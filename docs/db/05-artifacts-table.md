@@ -2,13 +2,14 @@
 spec_id: db-05-artifacts-table
 title: "artifacts テーブル"
 status: approved
-version: "1.0"
+version: "1.1"
 approved_at: "2026-07-19"
 last_updated: "2026-07-19"
 spec_refs:
   - 00-database-overview.md
   - ../specifications/14-audio-packaging.md
   - ../specifications/21-electron-python-worker-interface.md
+  - 03-build-requests-table.md
 ---
 
 # artifacts テーブル
@@ -44,6 +45,16 @@ Jobが生成した成果物(MP3、テキスト等)の索引を保持する。成
 物理削除は行わない。再生成時も既存versionを削除せず、新しい`version_number`で
 新規行を追加する(`21-electron-python-worker-interface.md`の`artifact`イベントを
 受けて挿入する)。
+
+### 4.1 1つのBuild Requestから複数Artifactを生成する
+
+`build_requests.output_formats_json`(`03-build-requests-table.md`)がMP3と
+テキストを同時選択している場合、同一Build Request配下のJobから複数の
+`artifact_type`(`mp3_chapter`と`text_verified_script`)の行を作成できる。
+形式ごとに別Artifact行・別ファイルとして生成し、一方の生成が他方を
+上書きしない。unique制約(`project_id`,`artifact_type`,`version_number`)は
+`artifact_type`ごとに独立したversion系列を許容する設計であり、
+複数形式の同時生成を妨げない。
 
 ## 5. 更新責務
 

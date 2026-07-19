@@ -2,7 +2,7 @@
 spec_id: 14-audio-packaging
 title: "MP3結合と出力ファイルの仕様"
 status: approved
-version: "1.0"
+version: "1.1"
 approved_at: "2026-07-18"
 last_updated: "2026-07-19"
 source_dump: "audio_book_creation_dump_2026-07-18_220811.txt"
@@ -11,12 +11,12 @@ source_dump: "audio_book_creation_dump_2026-07-18_220811.txt"
 # MP3結合と出力ファイルの仕様
 
 > **承認範囲**  
-> 章単位MP3、音声マニフェスト、部分再生成、atomic outputを確定する。M4Bと全文版の詳細は、`../spec-proposals/m4b-and-complete-book-output.md`で別途策定する。
+> 章単位MP3、音声マニフェスト、部分再生成、atomic outputを確定する。M4Bの詳細は、`m4b-output.md`で別途規定する(全文MP3は本製品では作成しない、`19-application-scope-and-mvp.md`参照)。
 
 
 ## 1. 目的
 
-検査済みセグメント音声を順序どおり結合し、章単位MP3、全文版、deliverablesを再現可能に生成する。
+検査済みセグメント音声を順序どおり結合し、章単位MP3、deliverablesを再現可能に生成する。
 
 ## 2. 現行実装
 
@@ -36,10 +36,11 @@ source_dump: "audio_book_creation_dump_2026-07-18_220811.txt"
 ### SHOULD
 
 - 全章MP3一覧
-- 全文版MP3またはM4B
+- M4B(`m4b-output.md`、post-MVP)
 - deliverablesコピー
 
-M4Bは初期実装の必須にはしない。
+M4Bは初期実装の必須にはしない。全文MP3は本製品の成果物として作成しない
+(`19-application-scope-and-mvp.md`)。
 
 ## 4. ディレクトリ
 
@@ -50,7 +51,7 @@ audio/
 │   └── 01_ch01.mp3
 ├── exports/
 │   ├── chapters/
-│   ├── complete/
+│   ├── complete/        # M4B(post-MVP、m4b-output.md)。全文MP3は置かない
 │   └── manifest.json
 ├── preview/
 ├── manifests/

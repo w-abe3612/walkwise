@@ -1,29 +1,27 @@
 ---
 spec_id: material-input-pipeline
 title: "資料入力パイプラインの責務と境界"
-status: review
-version: "0.3"
+status: approved
+version: "1.0"
+approved_at: "2026-07-19"
 last_updated: "2026-07-19"
 merged_from:
-  - "docs/spec-proposals/material-input-pipeline-unplanned.md (v1、未策定事項の網羅的洗い出し)"
-  - "docs/spec-proposals/generated-specifications/material-input-pipeline.md (v0.2)"
-depends_on: []
+  - "docs/spec-proposals/material-input-pipeline-unplanned.md (v1、未策定事項の網羅的洗い出し、削除済み)"
 spec_refs:
-  - ../specifications/audiobook-creation-pipeline.md
-  - ../specifications/18-ai-model-routing-and-cost-control.md
-  - ../specifications/01-common-identifiers-and-versioning.md
-  - ../specifications/image-material-ingestion.md
-  - ../specifications/19-application-scope-and-mvp.md
+  - audiobook-creation-pipeline.md
+  - 18-ai-model-routing-and-cost-control.md
+  - 01-common-identifiers-and-versioning.md
+  - image-material-ingestion.md
+  - 19-application-scope-and-mvp.md
   - pdf-direct-text-extraction.md
   - ocr-and-scanned-pdf.md
   - epub-text-extraction.md
   - source-storage-and-common-schema.md
   - rights-and-license-management.md
   - source-preprocessing.md
-  - kindle-capture-separate-tool.md
 ---
 
-# 資料入力パイプラインの責務と境界(ドラフト)
+# 資料入力パイプラインの責務と境界
 
 ## 1. 目的
 
@@ -33,10 +31,11 @@ spec_refs:
 資料入力パイプラインとして具体化し、コンテンツ作成パイプラインへ検索可能・
 引用可能・章へ割当て可能な資料セットを渡す責務と境界を定義する。
 
-`19-application-scope-and-mvp.md`により、PDF・画像はMVPの**素材登録対象**
-だが、PDF直接抽出・OCR処理そのものの実行は未確定であり、これらは
-`pdf-direct-text-extraction.md`・`ocr-and-scanned-pdf.md`側の未承認提案として
-別管理する。Kindleは本体対象外であり`kindle-capture-separate-tool.md`へ分離済みである。
+`19-application-scope-and-mvp.md`により、PDF・画像はMVPの素材登録対象であり、
+かつPDF直接抽出(`pdf-direct-text-extraction.md`)とOCR(`ocr-and-scanned-pdf.md`)は
+MVP必須処理として承認済みである。EPUB入力(`epub-text-extraction.md`)はpost-MVPの
+承認済み仕様である。Kindle操作・Kindle専用ツールの開発、動画・録音素材の取り込みは、
+製品の恒久的対象外である(`19-application-scope-and-mvp.md` 5.5節)。
 
 ## 2. 対象範囲
 
@@ -52,14 +51,16 @@ spec_refs:
 
 - 資料保存の物理ディレクトリ構成と共通schemaの詳細(→`source-storage-and-common-schema.md`)
 - 権利・ライセンス状態の詳細な分類(→`rights-and-license-management.md`)
-- PDF/OCR/EPUB/Kindleそれぞれの抽出仕様の詳細(→各提案書)
+- PDF/OCR/EPUBそれぞれの抽出仕様の詳細(→各仕様書)
 - 前処理の詳細な変換ルール(→`source-preprocessing.md`)
 - 資料の法的利用可否の最終判断(常に人間または専門家)
+- 動画・録音音声・Kindle操作の取り込み(製品の恒久的対象外)
 
 ## 4. 現行実装
 
-現行コードには専用の資料入力パイプライン実装は存在しない。`dumps/`配下には
-資料入力の元となったテキストダンプが手動で置かれているのみである。
+現行コードには専用の資料入力パイプライン実装は存在しない。本書は仕様として
+承認済みであるが、PDF直接抽出・OCR・前処理の実装コードは現時点では存在しない。
+仕様の承認と実装の完了は区別する。
 
 ## 5. 推奨仕様
 
@@ -188,9 +189,7 @@ coverage mapを作成
 #### 5.4.3 licensed_reference
 
 対象: 購入済みPDF、市販書籍、人間が利用権を確認した資料。カメラ写真・
-スキャナ画像も含む。Kindle等の画面キャプチャ経由の資料は、本体対象外の
-専用ツール(`kindle-capture-separate-tool.md`)が生成した画像sequenceとして
-受け取る。
+スキャナ画像も含む。
 
 ```text
 利用目的とrights状態を登録
@@ -206,7 +205,8 @@ raw、normalized、structuredを分離
 topic indexとcoverage mapを作成
 ```
 
-DRM回避や市販本文の自動取得は対象外とする。
+DRM回避や市販本文の自動取得は対象外とする。Kindleアプリの画面操作・キャプチャは
+製品の恒久的対象外であり、本経路には含まれない(`19-application-scope-and-mvp.md`)。
 
 ### 5.5 AIモデルルーティング
 
@@ -259,17 +259,23 @@ media:
 
 `source_strategy`候補: `open_fulltext` / `hybrid_reconstruction` / `licensed_reference`
 
-`media.type`候補: `text` / `pdf` / `image_sequence` / `manual_structured`
-(`epub`、`kindle_capture`はMVP対象外または本体対象外だが、将来の入力種別として
-schema上は予約する)
+`media.type`候補(MVP): `text` / `pdf` / `image_sequence`(`manual_structured`も
+内部表現として利用可能)。`epub`はpost-MVPの入力種別として`epub-text-extraction.md`
+承認済みだが、MVP画面には表示しない。
 
 `acquisition_method`候補: `camera_photo` / `flatbed_scanner` / `sheetfed_scanner` /
-`mobile_scan_app` / `existing_image_file` / `kindle_capture`(専用ツール経由)
+`mobile_scan_app` / `existing_image_file`。
 
-カメラ写真・スキャナ画像は`../specifications/image-material-ingestion.md`へ従う。
+外部の任意の手段(スマートフォン、他のキャプチャツール等)で用意された画像は、
+取得元を特定のアプリ固有方式として識別せず、`existing_image_file`として
+一般的に取り込む。`kindle_capture`という専用のmedia typeまたは
+acquisition methodは設けない(`19-application-scope-and-mvp.md` 5.5節)。
 
-動画・録音は現在の正式対象へ含めず、`video-source-ingestion.md`と
-`audio-recording-source-ingestion.md`で将来案として管理する。
+カメラ写真・スキャナ画像は`image-material-ingestion.md`へ従う。
+
+動画・授業録音等を資料として取り込む機能は、製品の恒久的対象外である
+(`19-application-scope-and-mvp.md` 5.5節)。これらのlocator・schema拡張は
+本仕様の対象に含めない。
 
 ## 6. 正本と派生物
 
@@ -302,7 +308,7 @@ AI生成物だけを原資料の代替にしない。
 
 - 作品目的・対象範囲・資料戦略(`project-plan.yaml`初期版相当)
 - 資料候補、URL、原資料ファイル、既存OCR結果、手動構造化資料のいずれか
-- 利用目的・権利情報(`rights-and-license-management.md`確定前は暫定的に`unverified`扱い)
+- 利用目的・権利情報(`rights-and-license-management.md`に従う)
 
 ## 9. 出力
 
@@ -359,9 +365,8 @@ AI生成物だけを原資料の代替にしない。
 
 - 自動資料候補提案の範囲(検索エンジン利用の可否・範囲)
 - URL取得を自動化するか
-- 複数資料の一括登録・資料更新確認・同一資料重複判定の具体的な運用
-  (旧`material-input-pipeline-unplanned.md`が挙げていた論点。基本方針は
-  5.1〜5.4節で確定済みだが、UI・API上の具体的な操作手順は
+- 複数資料の一括登録・資料更新確認・同一資料重複判定の具体的な操作手順
+  (基本方針は5.1〜5.4節で確定済み。UI・API上の具体的な操作手順は
   `docs/screens/02-project-workspace-and-source-import.md`側で扱う)
 - source requirement matrixの詳細schema(→`source-storage-and-common-schema.md`)
 - coverage状態の粒度の詳細
@@ -381,16 +386,17 @@ AI生成物だけを原資料の代替にしない。
 - [x] AIモデルの役割と昇格条件が明示されている。
 - [x] 資料全文の繰り返し送信を避ける方針が明示されている。
 - [x] 人間承認を省略しない設計になっている。
-- [x] 出力ドラフトが存在し、`status: review`である。
 - [x] 参照した承認済み仕様が記録されている。
 - [x] 実装コードを変更していない。
 
-## 17. 下位提案書への分割
+## 17. 下位仕様への分割
 
 - 資料保存構成と共通資料スキーマ: `source-storage-and-common-schema.md`
 - 著作権・ライセンス・利用目的の管理: `rights-and-license-management.md`
 - PDF直接抽出: `pdf-direct-text-extraction.md`
 - OCRとスキャンPDF: `ocr-and-scanned-pdf.md`
-- EPUBテキスト抽出: `epub-text-extraction.md`(MVP対象外)
-- Kindle画面キャプチャ: `kindle-capture-separate-tool.md`(本体対象外)
+- EPUBテキスト抽出: `epub-text-extraction.md`(post-MVP)
 - 書籍データ前処理: `source-preprocessing.md`
+
+Kindle画面キャプチャ・Kindle専用ツールは、製品の恒久的対象外であり
+下位仕様として存在しない(`19-application-scope-and-mvp.md` 5.5節)。

@@ -1,6 +1,6 @@
 ---
 status: active
-version: "2.0"
+version: "3.0"
 last_updated: "2026-07-19"
 ---
 
@@ -44,23 +44,28 @@ last_updated: "2026-07-19"
 次のテーマは仕様策定タスクとしては完了(削除)しているが、内容は
 `docs/spec-proposals/`直下の提案書として引き続き検討中である。
 
-- [音声検査の最終閾値](../audio-validation-thresholds.md)
-- [COEIROINKクライアント](../coeiroink-client.md)
-- [資料入力パイプラインの責務と境界](../material-input-pipeline.md)
-- [資料保存構成と共通資料スキーマ](../source-storage-and-common-schema.md)
-- [著作権・ライセンス・利用目的の管理](../rights-and-license-management.md)
-- [PDF直接テキスト抽出](../pdf-direct-text-extraction.md)
-- [OCRとスキャンPDF](../ocr-and-scanned-pdf.md)
-- [EPUBテキスト抽出](../epub-text-extraction.md)
-- [書籍データ前処理](../source-preprocessing.md)
-- [M4Bと全文版出力](../m4b-and-complete-book-output.md)
-- [ASRによる原稿と音声の照合](../asr-script-audio-verification.md)
-- [Kindle画面キャプチャ(専用ツール案)](../kindle-capture-separate-tool.md)
-- [動画・YouTube等の資料入力](../video-source-ingestion.md)
-- [授業録音・音声ファイルの資料入力](../audio-recording-source-ingestion.md)
+- [音声検査の最終閾値](../audio-validation-thresholds.md) — `status: provisional`
+- [COEIROINKクライアント](../coeiroink-client.md) — `status: blocked`
+
+次のテーマは、資料入力パイプラインの下位仕様として`docs/specifications/`へ
+昇格済みであり、本ディレクトリには重複して残していない。
+
+- 資料入力パイプラインの責務と境界 → `docs/specifications/material-input-pipeline.md`
+- 資料保存構成と共通資料スキーマ → `docs/specifications/source-storage-and-common-schema.md`
+- 著作権・ライセンス・利用目的の管理 → `docs/specifications/rights-and-license-management.md`
+- PDF直接テキスト抽出 → `docs/specifications/pdf-direct-text-extraction.md`
+- OCRとスキャンPDF → `docs/specifications/ocr-and-scanned-pdf.md`
+- EPUBテキスト抽出 → `docs/specifications/epub-text-extraction.md`
+- 書籍データ前処理 → `docs/specifications/source-preprocessing.md`
+- M4B出力 → `docs/specifications/m4b-output.md`
+- ASRによる原稿と音声の照合 → `docs/specifications/asr-script-audio-verification.md`
 
 カメラ写真・スキャナ画像は承認済み仕様へ昇格済みである。
 
 ```text
 docs/specifications/image-material-ingestion.md
 ```
+
+Kindle画面キャプチャ・Kindle専用ツール、動画・授業録音の資料入力は、
+製品の恒久的対象外であり、仕様策定タスク・未承認提案のいずれとしても存在しない
+(`docs/specifications/19-application-scope-and-mvp.md` 5.5節)。

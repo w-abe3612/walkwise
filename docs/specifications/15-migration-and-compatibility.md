@@ -2,7 +2,7 @@
 spec_id: 15-migration-and-compatibility
 title: "現行コードからの移行・互換性仕様"
 status: approved
-version: "1.1"
+version: "1.2"
 approved_at: "2026-07-18"
 source_dump: "audio_book_creation_dump_2026-07-18_220811.txt"
 last_updated: "2026-07-19"
@@ -183,16 +183,14 @@ APIバージョンと起動方式を固定して実装する。
 
 
 
-## 12. Kindleキャプチャ移行
+## 12. Kindleキャプチャに関する方針
 
-Kindle画面キャプチャは本体アプリケーションの機能に含めない
-(`19-application-scope-and-mvp.md` 5.6節)。旧版実装(capture settings、
+Kindle画面キャプチャ、Kindle専用ツールの開発は、製品の恒久的対象外である
+(`19-application-scope-and-mvp.md` 5.5節)。旧版実装(capture settings、
 Kindleウィンドウ検出、ページ送り、1ページ試し撮り、ページ画像保存、
-Tesseract OCR、互換wrapper)の移行・再利用は、本体側の移行対象ではなく、
-`docs/spec-proposals/kindle-capture-separate-tool.md`が示す専用ツール側の
-検討対象とする。
+Tesseract OCR、互換wrapper)の移行・再利用は、本製品では行わない。
 
-本体が旧版のページ画像・OCRテキストを取り込む場合は、`kindle_capture`を
+本体が旧版のページ画像・OCRテキストを取り込む場合は、`existing_image_file`を
 `acquisition_method`とする一般的な画像sequenceとして
 `image-material-ingestion.md`の契約経由で受け取る。旧ページ画像・OCRテキストを
 自動移動・削除しない方針は維持する。

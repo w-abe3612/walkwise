@@ -1,8 +1,9 @@
 ---
 spec_id: source-preprocessing
 title: "書籍データ前処理"
-status: review
-version: "0.2"
+status: approved
+version: "1.0"
+approved_at: "2026-07-19"
 last_updated: "2026-07-19"
 generated_by:
   type: ai
@@ -11,20 +12,18 @@ depends_on:
   - pdf-direct-text-extraction.md
   - ocr-and-scanned-pdf.md
   - epub-text-extraction.md
-  - kindle-capture-separate-tool.md
 spec_refs:
   - pdf-direct-text-extraction.md
   - ocr-and-scanned-pdf.md
   - epub-text-extraction.md
-  - kindle-capture-separate-tool.md
-  - ../specifications/18-ai-model-routing-and-cost-control.md
+  - 18-ai-model-routing-and-cost-control.md
 ---
 
-# 書籍データ前処理(ドラフト)
+# 書籍データ前処理
 
 ## 1. 目的
 
-PDF直接抽出・カメラ写真OCR・スキャナ画像OCR・EPUB抽出・Kindleキャプチャ経由OCRのいずれから得た抽出本文からも、
+PDF直接抽出・カメラ写真OCR・スキャナ画像OCR・EPUB抽出のいずれから得た抽出本文からも、
 ヘッダー、ページ番号、不自然な改行、重複を除去し、章・節・図表・コード・数式を、
 原文へ戻れる形で構造化する処理を定義する。
 
@@ -41,30 +40,30 @@ PDF直接抽出・カメラ写真OCR・スキャナ画像OCR・EPUB抽出・Kind
 
 ## 3. 対象外
 
-- 抽出そのもの(PDF/OCR/EPUB/Kindleは各抽出提案書(pdf-direct-text-extraction.md/ocr-and-scanned-pdf.md/epub-text-extraction.md/kindle-capture-separate-tool.md)で定義済み)
+- 抽出そのもの(PDF/OCR/EPUBは各仕様書(pdf-direct-text-extraction.md/ocr-and-scanned-pdf.md/epub-text-extraction.md)で定義済み)
 - 技術的主張の検証(コンテンツ作成パイプラインの責務)
 - 音声向け変換(`tts_text`生成。コンテンツ作成パイプラインの責務)
 
 ## 4. 現行実装
 
-現行コードに前処理の実装は存在しない。
+現行コードに前処理の実装は存在しない。本書は仕様として承認済みであるが、実装コードは現時点では存在しない。
 
 ## 5. 推奨仕様
 
 ### 5.1 raw/normalized/structuredの境界
 
-質問2への回答:
+次のとおりとする。
 
 ```text
-raw          = 抽出結果そのもの(各抽出提案書の出力)。原文相当。不変。
+raw          = 抽出結果そのもの(各仕様書の出力)。原文相当。不変。
 normalized   = 表記・改行・header/footer補正済み。rawとの差分を追跡可能。
 structured   = 章節・要素分類済み。コンテンツ作成パイプラインへの後続入力。
 ```
 
 ### 5.2 処理順
 
-質問1・3への回答: **決定的なルール処理を先に行い、AIは候補生成と
-複雑な構造化に使う。**
+決定的なルール処理を先に行い、AIは候補生成と
+複雑な構造化に使う。
 
 ```text
 raw
@@ -135,7 +134,7 @@ structured
 
 ### 5.6 図表・コード・数式
 
-質問4への回答: **独立要素として保存し、本文へ推測で埋め込まない。**
+独立要素として保存し、本文へ推測で埋め込まない。
 
 ```json
 {
@@ -153,7 +152,7 @@ structured
 
 ### 5.7 AI通信量の削減
 
-質問5への回答:
+次のとおりとする。
 
 - 変更がないページをAIへ送らない。
 - header/footerの繰り返し除去はルール化して再利用する(AIへ毎回依頼しない)。
@@ -188,7 +187,7 @@ transformation:
 - economyとstandardの結果が不一致
 - high assuranceが必要だが未設定
 
-これらはいずれも自動でstructuredへ昇格させない(質問3「どの変更を人間確認にするか」への回答)。
+これらはいずれも自動でstructuredへ昇格させない。
 
 
 ### 5.10 画像由来本文の追加provenance
@@ -213,7 +212,7 @@ transformation:
 
 ## 6. 入力
 
-- 各抽出提案書いずれかの抽出結果(raw)
+- 各仕様書いずれかの抽出結果(raw)
 - `source-storage-and-common-schema.md`のchunk manifest
 
 ## 7. 出力
@@ -265,7 +264,7 @@ transformation:
 ## 12. 移行・互換性
 
 - 現行実装からの移行対象なし。
-- 入力形式は各抽出提案書それぞれの出力(chunk/page result)と互換にする。
+- 入力形式は各仕様書それぞれの出力(chunk/page result)と互換にする。
 
 ## 13. 未決定事項
 
@@ -281,10 +280,9 @@ transformation:
 - [x] 意味変更の可能性がある補正を自動承認しない。
 - [x] 必要箇所だけを再処理できる。
 - [x] AI通信量を抑える構造になっている。
-- [x] 出力ドラフトが存在し、`status: review`である。
 - [x] 実装コードを変更していない。
 
-## 15. 停止・保留条件(該当状況)
+## 15. 設計上の確認事項
 
 - normalizedがoriginalを置き換える設計にはなっていない(5.1節で明確に分離)。
 - 数式・コード・表を根拠なしで復元する要求はなく、5.6節で常に人間確認対象とした。
