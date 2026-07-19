@@ -67,7 +67,7 @@ source_dump: "audio_book_creation_dump_2026-07-18_235129.txt"
 利用目的・資料役割確認
 ↓
 資料登録または資料入力
-（PDF、EPUB、Kindle、カメラ写真、スキャナ画像、手動本文）
+（PDF、EPUB、画面キャプチャ専用ツール由来の画像sequence、カメラ写真、スキャナ画像、手動本文）
 ↓
 画像取り込み・資料抽出・OCR・正規化
 ↓

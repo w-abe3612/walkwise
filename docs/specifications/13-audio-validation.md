@@ -4,7 +4,7 @@ title: "音声検査の判定基準"
 status: approved
 version: "1.1"
 approved_at: "2026-07-18"
-last_updated: "2026-07-18"
+last_updated: "2026-07-19"
 source_dump: "audio_book_creation_dump_2026-07-18_231158.txt"
 ---
 
@@ -14,7 +14,7 @@ source_dump: "audio_book_creation_dump_2026-07-18_231158.txt"
 > **承認範囲**  
 > 本書では検査段階、判定区分、検査項目、レポート形式を確定する。
 > LUFS、無音時間、文字数毎秒などの最終数値は
-> `../spec-proposals/task/4_audio-validation-thresholds.md`で実測後に確定する。
+> `../spec-proposals/audio-validation-thresholds.md`で実測後に確定する。
 
 ## 1. 目的
 

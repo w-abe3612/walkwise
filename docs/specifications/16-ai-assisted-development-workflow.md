@@ -2,7 +2,7 @@
 spec_id: 16-ai-assisted-development-workflow
 title: "AI支援による仕様駆動・テスト先行開発ワークフロー"
 status: approved
-version: "1.2"
+version: "1.3"
 approved_at: "2026-07-18"
 last_updated: "2026-07-19"
 source_dump: "audio_book_creation_dump_2026-07-18_235129.txt"
@@ -1104,6 +1104,10 @@ external_tests:
 
 paths:
   specifications: docs/specifications
+  db_specifications: docs/db
+  screen_specifications: docs/screens
+  spec_proposals: docs/spec-proposals
+  spec_proposal_tasks: docs/spec-proposals/task
   tasks: docs/tasks
   commands: docs/commands
   tests: tests

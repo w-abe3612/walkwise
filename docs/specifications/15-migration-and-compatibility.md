@@ -185,40 +185,17 @@ APIバージョンと起動方式を固定して実装する。
 
 ## 12. Kindleキャプチャ移行
 
-Kindleキャプチャは`kindle-capture.md`へ従う。
+Kindle画面キャプチャは本体アプリケーションの機能に含めない
+(`19-application-scope-and-mvp.md` 5.6節)。旧版実装(capture settings、
+Kindleウィンドウ検出、ページ送り、1ページ試し撮り、ページ画像保存、
+Tesseract OCR、互換wrapper)の移行・再利用は、本体側の移行対象ではなく、
+`docs/spec-proposals/kindle-capture-separate-tool.md`が示す専用ツール側の
+検討対象とする。
 
-旧版には、capture settings、Kindleウィンドウ検出、ページ送り、
-1ページ試し撮り、ページ画像保存、Tesseract OCR、互換wrapperが存在する。
-
-移行原則:
-
-1. 旧版実装を方式の採用根拠として利用する。
-2. 旧座標を全環境共通値として固定しない。
-3. `config/capture_settings.json`をlegacy capture profileへ変換する。
-4. キャプチャとOCRを分離する。
-5. 旧ページ画像とOCRテキストを自動移動・削除しない。
-6. 新形式がある場合は新manifestを優先して読む。
-7. 新形式がない場合、旧ページ画像を互換入力として読み取ってよい。
-8. 旧CLIは薄いwrapperとして段階的に維持してよい。
-9. 実画面操作は通常pytestから分離する。
-
-旧版`capture_ocr_tts.py`の`clean_text`相当処理は、
-キャプチャ工程へ残さず、OCR後の正規化工程へ移す。
-
-旧データを新形式へ登録する際は、最低限次を生成する。
-
-```yaml
-provenance:
-  legacy_input: true
-  legacy_image_path: data/library/<book_id>/pages/<section>/page_XXXX.png
-  imported_at: "2026-07-19T00:00:00+09:00"
-
-capture:
-  page_index: 1
-  image_hash:
-    algorithm: sha256
-    value: "..."
-```
+本体が旧版のページ画像・OCRテキストを取り込む場合は、`kindle_capture`を
+`acquisition_method`とする一般的な画像sequenceとして
+`image-material-ingestion.md`の契約経由で受け取る。旧ページ画像・OCRテキストを
+自動移動・削除しない方針は維持する。
 
 ## 13. 完了条件
 

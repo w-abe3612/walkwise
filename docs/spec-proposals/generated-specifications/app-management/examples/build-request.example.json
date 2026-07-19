@@ -1,9 +1,0 @@
-{
-  "_comment": "app-management 統合草案の例。未承認。参照: 07-project-task-job-workflow.md, 10-output-and-export-settings.md, 11-voice-selection-and-preview.md",
-  "build_request_id": "br-0001",
-  "project_id": "database-foundations",
-  "output_profile_id": "mp3-and-text-default",
-  "voice_profile_ref_id": "sample-voicevox-profile",
-  "scope": "all_chapters",
-  "status": "draft"
-}

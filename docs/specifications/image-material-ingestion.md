@@ -416,11 +416,14 @@ AIへ送信する場合、原画像送信の権利・プライバシー確認を
 
 ## 18. 移行・互換性
 
-既存のKindleページ画像は`acquisition_method: kindle_capture`として扱い、
+Kindle等の画面キャプチャ専用ツールが生成したページ画像は、
+`acquisition_method: kindle_capture`として扱い、
 カメラ・スキャナ画像と同一のOCR入力interfaceへ渡してよい。
+本体アプリケーションはKindleアプリの操作・座標・ページ送りを認識せず、
+専用ツールが出力した画像sequenceとmanifestだけを一般的な画像入力として受け取る
+(専用ツール側の仕様は`docs/spec-proposals/kindle-capture-separate-tool.md`)。
 
-ただしKindle capture sessionの正本は
-`kindle-capture.md`のmanifestであり、
+専用ツール側のcapture sessionの正本は専用ツール側のmanifestであり、
 本仕様の画像取り込みsessionへ無断変換して上書きしない。
 
 旧`data/library/<book_id>/pages/`の画像を読み込む場合は、

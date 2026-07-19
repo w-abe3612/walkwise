@@ -4,13 +4,14 @@ title: "MP3結合と出力ファイルの仕様"
 status: approved
 version: "1.0"
 approved_at: "2026-07-18"
+last_updated: "2026-07-19"
 source_dump: "audio_book_creation_dump_2026-07-18_220811.txt"
 ---
 
 # MP3結合と出力ファイルの仕様
 
 > **承認範囲**  
-> 章単位MP3、音声マニフェスト、部分再生成、atomic outputを確定する。M4Bと全文版の詳細は、`../spec-proposals/task/14_m4b-and-complete-book-output.md`で別途策定する。
+> 章単位MP3、音声マニフェスト、部分再生成、atomic outputを確定する。M4Bと全文版の詳細は、`../spec-proposals/m4b-and-complete-book-output.md`で別途策定する。
 
 
 ## 1. 目的

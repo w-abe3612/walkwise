@@ -2,9 +2,9 @@
 spec_id: 00-specification-guidelines
 title: "仕様書作成ガイドライン"
 status: approved
-version: "1.0"
+version: "1.1"
 approved_at: "2026-07-18"
-last_updated: "2026-07-18"
+last_updated: "2026-07-19"
 source_dump: "audio_book_creation_dump_2026-07-18_231158.txt"
 ---
 
@@ -114,3 +114,43 @@ AI API、VOICEVOX、COEIROINK、ffmpegなどに依存する処理と、パス生
 - エラーと警告が区別されている。
 - 既存コードへの影響が記載されている。
 - テスト可能な完了条件がある。
+
+## 10. ディレクトリ構成とライフサイクル
+
+仕様・提案・タスクは、次の4ディレクトリへ厳密に区別して格納する。
+
+```text
+docs/specifications/   承認済み仕様(製品全体・アーキテクチャ・処理契約・保存方針・配布方針)
+docs/db/                承認済みDBテーブル仕様(方針・ERD・個別テーブル定義)
+docs/screens/           承認済み画面仕様(画面構成・責務・表示項目・遷移)
+docs/spec-proposals/    未承認・provisional・blockedな仕様提案(flat配置)
+docs/spec-proposals/task/  未実行の仕様策定タスク
+docs/tasks/             未実行の開発・作業タスク(承認済み仕様の実装指示)
+```
+
+### 10.1 昇格のライフサイクル
+
+1. 検討中の内容は`docs/spec-proposals/`直下へ提案として作成する。
+2. 昇格条件(矛盾がない、`evidence_gap`/`human_review_required`が残っていない、
+   製品範囲に必要である等)を満たし、人間が承認した場合のみ、対応する
+   承認済みディレクトリ(`docs/specifications/`、`docs/db/`、`docs/screens/`)へ
+   移す。
+3. 昇格後、`docs/spec-proposals/`側の対応する提案ファイルは削除する。
+   承認済み仕様と同じ内容を`docs/spec-proposals/`へ重複して残さない。
+
+### 10.2 禁止する階層
+
+`docs/spec-proposals/generated-specifications/`のような、本ガイドラインに
+定義されていない新しいサブディレクトリを作らない。`docs/spec-proposals/`直下は
+flat配置とし、既存の`task/`・`examples/`以外の階層が必要になった場合は、
+先に本ガイドラインへ追加して人間承認を得る。
+
+### 10.3 タスクディレクトリの区別
+
+```text
+docs/spec-proposals/task/   仕様策定タスク(未承認仕様を確定させるための検討)
+docs/tasks/                 承認済み仕様に基づく実装タスク
+```
+
+いずれも、完了したタスクファイルは削除する。タスクの成果物・実行報告・
+意思決定表をタスクディレクトリ自体へ残さない。完了履歴はGit履歴を正本とする。

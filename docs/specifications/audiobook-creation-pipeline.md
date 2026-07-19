@@ -369,9 +369,11 @@ AIは候補・検索語・構造・coverageを提示し、
 利用者が用意したKindle、PDF、市販書籍を、
 原資料、抽出結果、正規化結果、構造化結果へ分離する。
 
-Kindle画面キャプチャは`kindle-capture.md`へ従い、
-利用者が表示したWindows版Kindle画面をページ画像とcapture manifestへ変換する。
-キャプチャとOCRは分離し、DRM回避およびKindle内部ファイルの直接抽出を行わない。
+Kindle画面キャプチャは本体アプリケーションの機能に含めず、専用ツールまたは
+別ブランチで扱う(`docs/spec-proposals/kindle-capture-separate-tool.md`)。
+本体が受け取るのは、専用ツールが生成したページ画像sequenceとmanifestのみであり、
+本体はKindleアプリの操作、座標、ページ送りを認識しない。
+DRM回避およびKindle内部ファイルの直接抽出は、専用ツール側でも対象外とする。
 
 カメラ写真・スキャナ画像は`image-material-ingestion.md`へ従い、
 原画像をimmutableで保持し、順序・hash・品質・権利情報を持つmanifestから
@@ -969,8 +971,11 @@ data/library/<project_id>/
 - PDF直接抽出
 - OCR
 - EPUB
-- Kindle
 - 前処理
+
+Kindle画面キャプチャは本体アプリケーションのPhase Fに含めない。専用ツール
+または別ブランチの対象とし、本体は専用ツールが生成した画像sequenceを
+`image-material-ingestion.md`の一般契約経由でのみ受け取る。
 
 既存ファイルを自動的に削除または移動してはならない。
 
