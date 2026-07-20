@@ -1,61 +1,176 @@
-from __future__ import annotations
+"""script/pipelines/draft_generation.py — 公開契約:
+DraftGenerationPipeline.generate(chapter_spec, chunks) -> ScriptDocument,
+segment_legacy_text(text) -> ScriptDocument.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/pipelines/draft_generation.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-SCRIPT-001
+Contract: docs/test-cases/TASK-SCRIPT-001-script-segments-and-draft-generation.md
+Spec: docs/specifications/05-script-segment-schema.md, docs/specifications/04-chapter-generation-schema.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-SCRIPT-001', 'DraftGenerationPipeline.generate(chapter_spec, chunks) -> ScriptDocument', '指定資料chunkから章初稿を生成しprovenanceを記録する。'),
-    ('TASK-SCRIPT-001', 'segment_legacy_text(text) -> ScriptDocument', '旧TXTを決定的にsegment化し未承認扱いにする。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-SCRIPT-001-01', 'priority': 'P0', 'layer': 'unit', 'title': 'segment一意', 'given': '8〜10segment初稿', 'when': 'validate', 'then': 'ID/order/textを検証し順序を保持', 'test_file': '`tests/test_script_schema.py`'},
-    {'id': 'TC-SCRIPT-001-02', 'priority': 'P0', 'layer': 'integration_mock', 'title': '指定外資料', 'given': 'AI結果がsource_ids外の事実を含む', 'when': '生成結果を検査', 'then': 'pending claimとして記録し黙って承認しない', 'test_file': '`tests/test_draft_generation.py`'},
-    {'id': 'TC-SCRIPT-001-03', 'priority': 'P0', 'layer': 'unit', 'title': '旧TXT', 'given': '同一TXTを2回変換', 'when': 'segment化', 'then': '同一ID/orderになり人間未承認', 'test_file': '`tests/test_script_schema.py`'},
-    {'id': 'TC-SCRIPT-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'standard generation', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ScriptDocument/ScriptSegment/SpeakerRef`を通じて「standard generation」を実行する', 'then': '「standard generation」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_draft_generation.py`'},
-    {'id': 'TC-SCRIPT-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'prompt/input provenance', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ScriptDocument/ScriptSegment/SpeakerRef`を通じて「prompt/input provenance」を実行する', 'then': '「prompt/input provenance」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_script_schema.py`'},
-    {'id': 'TC-SCRIPT-001-06', 'priority': 'P1', 'layer': 'unit', 'title': '入力不変', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ScriptDocument/ScriptSegment/SpeakerRef`を通じて「入力不変」を実行する', 'then': '処理前後で入力ファイルのbyte列とSHA-256が一致し、派生物だけが新規作成される。', 'test_file': '`tests/test_draft_generation.py`'},
-    {'id': 'TC-SCRIPT-001-07', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`ScriptDocument/ScriptSegment/SpeakerRef`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_script_schema.py`'},
-    {'id': 'TC-SCRIPT-001-08', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`ScriptDocument/ScriptSegment/SpeakerRef`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_draft_generation.py`'},
-    {'id': 'TC-SCRIPT-001-09', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_script_schema.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/pipelines/draft_generation.py)")
+import re
+from collections.abc import Sequence
+from dataclasses import dataclass
 
-class ScriptDocument:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+from script.ai_clients.base import AIClient, AIRequest
+from script.core.errors import AppError, ErrorCode
+from script.schemas.chapter_spec import ChapterSpec
+from script.schemas.script import GenerationProvenance, ScriptDocument, ScriptSegment, SpeakerRef
+
+_STANDARD_MODEL_HINT = "gemini-2.5-flash"
+_DEFAULT_SEGMENT_TYPE = "explanation"
+_SOURCE_REFS_PREFIX = "SOURCE_REFS:"
+_TEXT_PREFIX = "TEXT:"
+
+_PARAGRAPH_SPLIT_RE = re.compile(r"\n\s*\n")
+
+
+@dataclass(frozen=True)
+class DraftChunkInput:
+    """DraftGenerationPipelineへの1 chunk分の入力。"""
+
+    chunk_id: str
+    source_id: str
+    text: str
+
+    def __post_init__(self) -> None:
+        if not self.chunk_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "chunk_id is required")
+        if not self.source_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "source_id is required")
+        if not self.text:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "text is required")
+
+
+def _parse_ai_segment_response(raw_text: str) -> tuple[tuple[str, ...], str]:
+    """AI応答から`SOURCE_REFS:`/`TEXT:`の2行形式を決定的に取り出す。"""
+    source_refs: tuple[str, ...] = ()
+    text_lines: list[str] = []
+    in_text = False
+
+    for line in raw_text.splitlines():
+        stripped = line.strip()
+        if not in_text and stripped.startswith(_SOURCE_REFS_PREFIX):
+            raw_refs = stripped[len(_SOURCE_REFS_PREFIX):]
+            source_refs = tuple(part.strip() for part in raw_refs.split(",") if part.strip())
+        elif stripped.startswith(_TEXT_PREFIX):
+            in_text = True
+            remainder = stripped[len(_TEXT_PREFIX):].strip()
+            if remainder:
+                text_lines.append(remainder)
+        elif in_text:
+            text_lines.append(line)
+
+    text = "\n".join(text_lines).strip()
+    if not text:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "AI response did not include TEXT content")
+    return source_refs, text
+
 
 class DraftGenerationPipeline:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def generate(self, chapter_spec: Any, chunks: Any) -> ScriptDocument:
-        """指定資料chunkから章初稿を生成しprovenanceを記録する。
+    """章仕様が許可するchunkだけをAIへ渡し、章初稿(review未承認)を生成する。"""
 
-        Public contract: ``DraftGenerationPipeline.generate(chapter_spec, chunks) -> ScriptDocument``.
-        """
-        _step4_unimplemented('DraftGenerationPipeline.generate')
+    def __init__(self, *, ai_client: AIClient, model: str = _STANDARD_MODEL_HINT) -> None:
+        if ai_client is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "ai_client is required")
+        if not model:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "model is required")
+        self._ai_client = ai_client
+        self._model = model
 
-def segment_legacy_text(text: Any) -> ScriptDocument:
-    """旧TXTを決定的にsegment化し未承認扱いにする。
+    def generate(self, chapter_spec: ChapterSpec, chunks: Sequence[DraftChunkInput]) -> ScriptDocument:
+        """指定資料chunkから章初稿を生成しprovenanceを記録する。"""
+        if chapter_spec is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "chapter_spec is required")
+        if not chunks:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "chunks must not be empty")
 
-    Public contract: ``segment_legacy_text(text) -> ScriptDocument``.
-    """
-    _step4_unimplemented('segment_legacy_text')
+        allowed_source_ids = frozenset(chapter_spec.source_ids)
+        # 許可されたsource_idのchunkだけを本文に含める(指定外資料を混入させない)。
+        allowed_chunks = [chunk for chunk in chunks if chunk.source_id in allowed_source_ids]
+        if not allowed_chunks:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "no chunks match chapter_spec.source_ids")
+
+        segments: list[ScriptSegment] = []
+        pending_claims: list[str] = []
+
+        for order, chunk in enumerate(allowed_chunks, start=1):
+            request = AIRequest(
+                user_text=chunk.text,
+                system_instruction=(
+                    "Draft one narration segment for this material. Respond in exactly this "
+                    "format:\nSOURCE_REFS: <comma-separated source ids you drew from>\n"
+                    "TEXT: <segment text>"
+                ),
+                model=self._model,
+            )
+            result = self._ai_client.generate(request)
+            source_refs, text = _parse_ai_segment_response(result.text)
+            if not source_refs:
+                source_refs = (chunk.source_id,)
+
+            segment_id = f"{chapter_spec.chapter_id}-seg{order:03d}"
+            out_of_scope = [ref for ref in source_refs if ref not in allowed_source_ids]
+            if out_of_scope:
+                # 指定外資料の事実を含む場合、黙って承認せずpending claimとして記録する。
+                pending_claims.append(segment_id)
+
+            segments.append(
+                ScriptSegment(
+                    segment_id=segment_id,
+                    order=order,
+                    speaker=SpeakerRef(character_id="neutral-explainer", role="explainer"),
+                    segment_type=_DEFAULT_SEGMENT_TYPE,
+                    text=text,
+                    source_refs=source_refs,
+                    review_status="pending_review",
+                )
+            )
+
+        return ScriptDocument(
+            project_id=chapter_spec.project_id,
+            chapter_id=chapter_spec.chapter_id,
+            stage="draft",
+            segments=tuple(segments),
+            pending_claims=tuple(pending_claims),
+            provenance=GenerationProvenance(
+                source_chunk_ids=tuple(chunk.chunk_id for chunk in allowed_chunks),
+                model=self._model,
+            ),
+        )
+
+
+def segment_legacy_text(
+    text: str,
+    *,
+    project_id: str = "legacy",
+    chapter_id: str = "legacy-chapter",
+    source_path: str | None = None,
+) -> ScriptDocument:
+    """旧TXTを段落単位で決定的にsegment化し未承認扱いにする。"""
+    if not text:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "text is required")
+
+    paragraphs = [paragraph.strip() for paragraph in _PARAGRAPH_SPLIT_RE.split(text) if paragraph.strip()]
+    if not paragraphs:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "text must contain at least one non-empty paragraph")
+
+    segments = tuple(
+        ScriptSegment(
+            segment_id=f"{chapter_id}-seg{order:03d}",
+            order=order,
+            speaker=SpeakerRef(character_id="legacy-narrator", role="narrator"),
+            segment_type=_DEFAULT_SEGMENT_TYPE,
+            text=paragraph,
+            review_status="pending_review",
+        )
+        for order, paragraph in enumerate(paragraphs, start=1)
+    )
+
+    return ScriptDocument(
+        project_id=project_id,
+        chapter_id=chapter_id,
+        stage="draft",
+        segments=segments,
+        provenance=GenerationProvenance(legacy_input=True, source_path=source_path),
+    )

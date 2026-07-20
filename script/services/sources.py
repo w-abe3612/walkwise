@@ -1,86 +1,138 @@
-from __future__ import annotations
+"""script/services/sources.py — 公開契約: SourceService.register/transition/list_for_project.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/services/sources.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-SOURCE-001
+Contract: docs/test-cases/TASK-SOURCE-001-source-metadata-service.md
+Spec: docs/db/02-sources-table.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-SOURCE-001', 'SourceService.register(command: RegisterSource) -> SourceRegistrationResult', '原本をimmutable copyしDBへ登録、重複hashはwarningとして返す。'),
-    ('TASK-SOURCE-001', 'SourceService.transition(source_id, target_status) -> Source', '合法な状態遷移だけを許可する。'),
-    ('TASK-SOURCE-001', 'SourceService.list_for_project(project_id) -> list[Source]', 'Project配下を登録順で返す。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-SOURCE-001-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'text即ready', 'given': 'UTF-8 textを登録', 'when': 'registerする', 'then': 'immutable原本、hash、status readyが作成される', 'test_file': '`tests/test_source_service.py`'},
-    {'id': 'TC-SOURCE-001-02', 'priority': 'P0', 'layer': 'unit', 'title': 'PDF/image processing', 'given': 'PDFまたは画像を登録', 'when': 'registerする', 'then': 'status registered/processingとなり後続Jobへ渡せる', 'test_file': '`tests/test_source_status_transitions.py`'},
-    {'id': 'TC-SOURCE-001-03', 'priority': 'P0', 'layer': 'integration_mock', 'title': '重複hash warning', 'given': '同一bytesを2回登録', 'when': 'registerする', 'then': '2件を追跡可能に保存しwarningを返す', 'test_file': '`tests/test_source_service.py`'},
-    {'id': 'TC-SOURCE-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'SHA-256', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`SourceMetadata.from_file(...) -> SourceMetadata`を通じて「SHA-256」を実行する', 'then': '「SHA-256」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_source_status_transitions.py`'},
-    {'id': 'TC-SOURCE-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'Project相対path', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`SourceMetadata.from_file(...) -> SourceMetadata`を通じて「Project相対path」を実行する', 'then': '保存値はProject root基準の相対pathとなり、絶対path・root外escapeは拒否される。', 'test_file': '`tests/test_source_service.py`'},
-    {'id': 'TC-SOURCE-001-06', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`SourceMetadata.from_file(...) -> SourceMetadata`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_source_status_transitions.py`'},
-    {'id': 'TC-SOURCE-001-07', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`SourceMetadata.from_file(...) -> SourceMetadata`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_source_service.py`'},
-    {'id': 'TC-SOURCE-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_source_status_transitions.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/services/sources.py)")
+import dataclasses
+import sqlite3
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 
+from script.core.errors import AppError, ErrorCode
+from script.domain.enums import SourceStatus
+from script.domain.models import Source
+from script.persistence.files import copy_immutable
+from script.persistence.paths import ProjectPaths
+from script.persistence.repositories import SourceRepository
+from script.persistence.unit_of_work import SqliteUnitOfWork
+from script.schemas.source_metadata import SourceMetadata
+
+_LEGAL_TRANSITIONS: dict[SourceStatus, set[SourceStatus]] = {
+    SourceStatus.REGISTERED: {SourceStatus.PROCESSING, SourceStatus.FAILED},
+    SourceStatus.PROCESSING: {SourceStatus.READY, SourceStatus.REVIEW_REQUIRED, SourceStatus.FAILED},
+    SourceStatus.READY: set(),
+    SourceStatus.REVIEW_REQUIRED: {SourceStatus.READY, SourceStatus.FAILED},
+    SourceStatus.FAILED: {SourceStatus.REGISTERED},
+}
+
+
+@dataclass(frozen=True)
 class RegisterSource:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """Source登録の入力。"""
 
-class Source:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    project_id: str
+    source_id: str
+    source_path: Path
+    destination_relative: str | None = None
+    media_type: str | None = None
 
+
+@dataclass(frozen=True)
 class SourceRegistrationResult:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """登録結果。同一hashの既存Sourceがある場合はduplicate_of経由で通知する。"""
+
+    source: Source
+    duplicate_of: str | None = None
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
 
 class SourceService:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
+    """Source原本のimmutable登録・状態遷移・一覧を提供する。"""
+
+    def __init__(self, data_root: Path, connection: sqlite3.Connection) -> None:
+        if not data_root or connection is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "data_root and connection are required")
+        self._data_root = Path(data_root)
+        self._connection = connection
+
     def register(self, command: RegisterSource) -> SourceRegistrationResult:
-        """原本をimmutable copyしDBへ登録、重複hashはwarningとして返す。
+        """原本をimmutable copyしDBへ登録、重複hashはwarningとして返す。"""
+        if command is None or not command.project_id or not command.source_id or not command.source_path:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id, source_id and source_path are required")
 
-        Public contract: ``SourceService.register(command: RegisterSource) -> SourceRegistrationResult``.
-        """
-        _step4_unimplemented('SourceService.register')
-    def transition(self, source_id: Any, target_status: Any) -> Source:
-        """合法な状態遷移だけを許可する。
+        paths = ProjectPaths.for_root(self._data_root, command.project_id)
+        source_path = Path(command.source_path)
+        destination_relative = command.destination_relative or f"sources/originals/{source_path.name}"
 
-        Public contract: ``SourceService.transition(source_id, target_status) -> Source``.
-        """
-        _step4_unimplemented('SourceService.transition')
-    def list_for_project(self, project_id: Any) -> list[Source]:
-        """Project配下を登録順で返す。
+        metadata = SourceMetadata.from_file(
+            source_path,
+            project_paths=paths,
+            destination_relative=destination_relative,
+            media_type=command.media_type,
+        )
 
-        Public contract: ``SourceService.list_for_project(project_id) -> list[Source]``.
-        """
-        _step4_unimplemented('SourceService.list_for_project')
+        destination_path = paths.resolve_relative(destination_relative)
+        copy_immutable(source_path, destination_path)
+
+        now = _now_iso()
+        source = Source(
+            source_id=command.source_id,
+            project_id=command.project_id,
+            media_type=metadata.media_type,
+            status=metadata.status,
+            original_file_path=destination_relative,
+            content_hash=metadata.content_hash,
+            created_at=now,
+            updated_at=now,
+        )
+
+        with SqliteUnitOfWork(self._connection) as uow:
+            uow.sources.insert(source)
+
+        duplicate_of = self._find_duplicate_hash(command.project_id, metadata.content_hash, command.source_id)
+        return SourceRegistrationResult(source=source, duplicate_of=duplicate_of)
+
+    def transition(self, source_id: str, target_status: SourceStatus) -> Source:
+        """合法な状態遷移だけを許可する。"""
+        if not source_id or target_status is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "source_id and target_status are required")
+
+        repository = SourceRepository(self._connection)
+        current = repository.find(source_id)
+        if current is None:
+            raise AppError(ErrorCode.NOT_FOUND, f"source not found: {source_id}")
+
+        allowed = _LEGAL_TRANSITIONS.get(current.status, set())
+        if target_status not in allowed:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                f"illegal status transition: {current.status.value} -> {target_status.value}",
+            )
+
+        updated = dataclasses.replace(current, status=target_status, updated_at=_now_iso())
+        repository.update(updated)
+        self._connection.commit()
+        return updated
+
+    def list_for_project(self, project_id: str) -> list[Source]:
+        """Project配下を登録順で返す。"""
+        if not project_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id is required")
+        rows = self._connection.execute(
+            "SELECT * FROM sources WHERE project_id = ? ORDER BY rowid", (project_id,)
+        ).fetchall()
+        return [SourceRepository._to_model(row) for row in rows]
+
+    def _find_duplicate_hash(self, project_id: str, content_hash: str, exclude_source_id: str) -> str | None:
+        repository = SourceRepository(self._connection)
+        for existing in repository.list_by_project(project_id):
+            if existing.source_id != exclude_source_id and existing.content_hash == content_hash:
+                return existing.source_id
+        return None

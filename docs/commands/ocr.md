@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-20'
 related_tasks:
 - TASK-OCR-001
 release_scopes:
@@ -40,8 +41,14 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_ocr_client.py` — 現在のダンプでは欠落
-- `tests/test_ocr_pipeline.py` — 現在のダンプでは欠落
+- `tests/test_ocr_client.py`
+- `tests/test_ocr_pipeline.py`
+
+現在の存在有無は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。`TASK-OCR-001`は
+本実装済みであり、外部接続なしの対象10ケース(TC-OCR-001-01〜10)はpassする。
+`TC-OCR-001-11`(integration_smoke)/`TC-OCR-001-12`(integration_live)は
+この開発環境にTesseract runtimeが未導入のため未確認であり、`TESSERACT_CMD`が
+未設定の間は既定でskipされる(secretや誤ったpass記録は行っていない)。
 
 ## 5. 収集・型確認
 

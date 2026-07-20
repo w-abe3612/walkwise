@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "platform": {
+    "initial_target": "windows-x64",
+    "future_platforms": ["macos", "linux"]
+  },
+  "code_signing": {
+    "signed": false,
+    "risk": "Unsigned installers may trigger Windows SmartScreen warnings.",
+    "mitigation": "Distribution instructions must explain how to proceed past the SmartScreen warning (More info -> Run anyway)."
+  },
+  "auto_update": {
+    "enabled": false,
+    "policy": "Users must manually download and reinstall new releases."
+  },
+  "user_data": {
+    "stored_in_install_directory": false,
+    "deleted_on_uninstall": false
+  },
+  "third_party_licenses": [
+    { "name": "Electron", "license": "MIT", "bundled": true },
+    { "name": "Vue", "license": "MIT", "bundled": true },
+    { "name": "electron-builder", "license": "MIT", "bundled": false },
+    { "name": "PyYAML", "license": "MIT", "bundled": false },
+    { "name": "PyMuPDF", "license": "AGPL-3.0-or-later", "bundled": false },
+    { "name": "pypdf", "license": "BSD-3-Clause", "bundled": false },
+    { "name": "Pillow", "license": "MIT-CMU", "bundled": false },
+    { "name": "VOICEVOX Engine", "license": "See VOICEVOX terms of use", "bundled": false },
+    { "name": "COEIROINK", "license": "See COEIROINK terms of use", "bundled": false },
+    { "name": "ffmpeg", "license": "LGPL-2.1-or-later / GPL-2.0-or-later (build dependent)", "bundled": false },
+    { "name": "Tesseract OCR", "license": "Apache-2.0", "bundled": false }
+  ]
+}

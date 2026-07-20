@@ -1,54 +1,93 @@
-from __future__ import annotations
+"""script/audio/preview.py — 公開契約: PreviewService.generate(request) -> PreviewAudio.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/audio/preview.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-AUDIO-001
+Contract: docs/test-cases/TASK-AUDIO-001-preview-and-segment-tts-cache.md
+Spec: docs/specifications/07-approval-workflow.md(preview_audio承認地点)
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-AUDIO-001', 'PreviewService.generate(request) -> PreviewAudio', '1〜3分の試聴とmetadataを新versionで生成する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-AUDIO-001-01', 'priority': 'P0', 'layer': 'unit', 'title': 'cache key', 'given': 'text同一でvoice revision差', 'when': 'key生成', 'then': '異なるkeyになる', 'test_file': '`tests/test_audio_synthesis.py`'},
-    {'id': 'TC-AUDIO-001-02', 'priority': 'P0', 'layer': 'integration_mock', 'title': '部分再生成', 'given': '1segmentだけ変更', 'when': 'synthesize', 'then': '対象segmentだけclientを呼ぶ', 'test_file': '`tests/test_audio_cache.py`'},
-    {'id': 'TC-AUDIO-001-03', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'preview version', 'given': '同条件で再試聴生成', 'when': 'generate', 'then': '既存を上書きせず新versionを作る', 'test_file': '`tests/test_audio_preview.py`'},
-    {'id': 'TC-AUDIO-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'tts_text優先', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`SegmentSynthesizer.synthesize(script, profile) -> list[SegmentAudio]`を通じて「tts_text優先」を実行する', 'then': '「tts_text優先」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_audio_synthesis.py`'},
-    {'id': 'TC-AUDIO-001-05', 'priority': 'P1', 'layer': 'unit', 'title': '300文字超internal part', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`SegmentSynthesizer.synthesize(script, profile) -> list[SegmentAudio]`を通じて「300文字超internal part」を実行する', 'then': '「300文字超internal part」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_audio_cache.py`'},
-    {'id': 'TC-AUDIO-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'audio_id', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`SegmentSynthesizer.synthesize(script, profile) -> list[SegmentAudio]`を通じて「audio_id」を実行する', 'then': '有効なmedia header・形式・順序を確認し、破損または形式不一致を成功扱いにしない。', 'test_file': '`tests/test_audio_preview.py`'},
-    {'id': 'TC-AUDIO-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'atomic output', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`SegmentSynthesizer.synthesize(script, profile) -> list[SegmentAudio]`を通じて「atomic output」を実行する', 'then': '「atomic output」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_audio_synthesis.py`'},
-    {'id': 'TC-AUDIO-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`SegmentSynthesizer.synthesize(script, profile) -> list[SegmentAudio]`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_audio_cache.py`'},
-    {'id': 'TC-AUDIO-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`SegmentSynthesizer.synthesize(script, profile) -> list[SegmentAudio]`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_audio_preview.py`'},
-    {'id': 'TC-AUDIO-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_audio_synthesis.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/audio/preview.py)")
+from dataclasses import dataclass
 
+from script.audio.synthesis import SegmentAudio
+from script.core.errors import AppError, ErrorCode
+
+
+@dataclass(frozen=True)
+class PreviewRequest:
+    """PreviewService.generate()への入力。"""
+
+    project_id: str
+    chapter_id: str
+    segment_audios: tuple[SegmentAudio, ...]
+
+    def __post_init__(self) -> None:
+        if not self.project_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id is required")
+        if not self.chapter_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "chapter_id is required")
+        if not self.segment_audios:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "segment_audios must not be empty")
+
+
+@dataclass(frozen=True)
 class PreviewAudio:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """PreviewService.generate()の戻り値。試聴音声は常に新versionとして生成される。"""
+
+    preview_id: str
+    project_id: str
+    chapter_id: str
+    version: int
+    output_path: str
+    duration_seconds: float
+    segment_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.preview_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "preview_id is required")
+        if self.version < 1:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "version must be 1 or greater")
+        if self.duration_seconds <= 0:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "duration_seconds must be greater than 0")
+
 
 class PreviewService:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def generate(self, request: Any) -> PreviewAudio:
-        """1〜3分の試聴とmetadataを新versionで生成する。
+    """検証済み原稿由来のsegment音声から、1〜3分程度の試聴音声を新versionで生成する。"""
 
-        Public contract: ``PreviewService.generate(request) -> PreviewAudio``.
-        """
-        _step4_unimplemented('PreviewService.generate')
+    def __init__(self) -> None:
+        self._versions: dict[tuple[str, str], int] = {}
+
+    def generate(self, request: PreviewRequest) -> PreviewAudio:
+        """1〜3分の試聴とmetadataを新versionで生成する。"""
+        if request is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "request is required")
+
+        for segment_audio in request.segment_audios:
+            if segment_audio.duration_seconds <= 0:
+                raise AppError(
+                    ErrorCode.VALIDATION_ERROR,
+                    f"segment_audio {segment_audio.segment_id} has invalid duration_seconds",
+                )
+            if segment_audio.sample_rate_hz <= 0:
+                raise AppError(
+                    ErrorCode.VALIDATION_ERROR,
+                    f"segment_audio {segment_audio.segment_id} has invalid sample_rate_hz",
+                )
+
+        total_duration = sum(segment_audio.duration_seconds for segment_audio in request.segment_audios)
+
+        version_key = (request.project_id, request.chapter_id)
+        next_version = self._versions.get(version_key, 0) + 1
+        self._versions[version_key] = next_version
+
+        preview_id = f"{request.chapter_id}-preview-r{next_version:04d}"
+        output_path = f"audio/preview/{request.chapter_id}/{preview_id}.wav"
+
+        return PreviewAudio(
+            preview_id=preview_id,
+            project_id=request.project_id,
+            chapter_id=request.chapter_id,
+            version=next_version,
+            output_path=output_path,
+            duration_seconds=round(total_duration, 3),
+            segment_ids=tuple(segment_audio.segment_id for segment_audio in request.segment_audios),
+        )

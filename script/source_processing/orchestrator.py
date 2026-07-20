@@ -1,60 +1,109 @@
-from __future__ import annotations
+"""script/source_processing/orchestrator.py — 公開契約: MaterialInputOrchestrator.register_adapter/process.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/source_processing/orchestrator.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-INGEST-001
+Contract: docs/test-cases/TASK-INGEST-001-material-input-orchestrator-and-text.md
+Spec: docs/specifications/material-input-pipeline.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-INGEST-001', 'MaterialInputOrchestrator.register_adapter(media_type, adapter) -> None', 'media typeとadapterを一意に登録する。'),
-    ('TASK-INGEST-001', 'MaterialInputOrchestrator.process(source) -> ProcessingResult', 'text/pdf/imageを対応adapterへdispatchし状態・進捗を更新する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-INGEST-001-01', 'priority': 'P0', 'layer': 'unit', 'title': 'dispatch', 'given': 'text/pdf/image Source', 'when': 'processする', 'then': '各adapterへ正確に1回dispatchする', 'test_file': '`tests/test_material_input_orchestrator.py`'},
-    {'id': 'TC-INGEST-001-02', 'priority': 'P0', 'layer': 'unit', 'title': '未知media', 'given': 'epubまたはvideo', 'when': 'processする', 'then': 'MVPではunsupported_media_typeで停止する', 'test_file': '`tests/test_text_ingestion.py`'},
-    {'id': 'TC-INGEST-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'text encoding', 'given': 'UTF-8正常/不正bytes', 'when': 'text adapterを実行', 'then': '正常はstructured、異常はfailedで原本保持', 'test_file': '`tests/test_material_input_orchestrator.py`'},
-    {'id': 'TC-INGEST-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'original/extracted/normalized/structured handoff', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`MaterialInputOrchestrator.register_adapter(media_type, adapter) -> None`を通じて「original/extracted/normalized/structured handoff」を実行する', 'then': '「original/extracted/normalized/structured handoff」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_text_ingestion.py`'},
-    {'id': 'TC-INGEST-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'status更新', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`MaterialInputOrchestrator.register_adapter(media_type, adapter) -> None`を通じて「status更新」を実行する', 'then': '承認済み状態遷移表にある遷移だけが成功し、不正遷移では永続状態を変更しない。', 'test_file': '`tests/test_material_input_orchestrator.py`'},
-    {'id': 'TC-INGEST-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'Job進捗hook', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`MaterialInputOrchestrator.register_adapter(media_type, adapter) -> None`を通じて「Job進捗hook」を実行する', 'then': 'current/totalとmessageを単調・順序どおりに通知し、完了後に進捗を逆行させない。', 'test_file': '`tests/test_text_ingestion.py`'},
-    {'id': 'TC-INGEST-001-07', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`MaterialInputOrchestrator.register_adapter(media_type, adapter) -> None`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_material_input_orchestrator.py`'},
-    {'id': 'TC-INGEST-001-08', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`MaterialInputOrchestrator.register_adapter(media_type, adapter) -> None`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_text_ingestion.py`'},
-    {'id': 'TC-INGEST-001-09', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_material_input_orchestrator.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/source_processing/orchestrator.py)")
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Protocol
 
+from script.core.errors import AppError, ErrorCode
+
+# 19-application-scope-and-mvp.md 5.5節: 動画・録音・Kindle操作は製品の恒久的対象外。
+# epub-text-extraction.mdはpost-MVP承認済みだが、本タスク(MVP)の対象外。
+_PERMANENTLY_UNSUPPORTED_MEDIA_TYPES = frozenset({"epub", "video", "audio_recording", "kindle_capture"})
+
+ProgressHook = Callable[[int, int, str], None]
+
+
+class MediaAdapter(Protocol):
+    """orchestratorが呼び出すmedia typeごとの処理adapterの形状。"""
+
+    def process(self, path: Path, context: Mapping[str, Any]) -> Any: ...
+
+
+@dataclass(frozen=True)
+class IngestSource:
+    """処理対象1件の入力。"""
+
+    source_id: str
+    media_type: str
+    path: Path
+    context: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class ProcessingResult:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """dispatch結果。status='structured'のときのみstructuredを持つ。"""
+
+    source_id: str
+    media_type: str
+    status: str
+    structured: Any | None = None
+    error: dict[str, str] | None = None
+
 
 class MaterialInputOrchestrator:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def register_adapter(self, media_type: Any, adapter: Any) -> None:
-        """media typeとadapterを一意に登録する。
+    """media typeとadapterを登録し、Sourceを対応adapterへdispatchする。"""
 
-        Public contract: ``MaterialInputOrchestrator.register_adapter(media_type, adapter) -> None``.
-        """
-        _step4_unimplemented('MaterialInputOrchestrator.register_adapter')
-    def process(self, source: Any) -> ProcessingResult:
-        """text/pdf/imageを対応adapterへdispatchし状態・進捗を更新する。
+    def __init__(self, *, progress_hook: ProgressHook | None = None) -> None:
+        self._adapters: dict[str, MediaAdapter] = {}
+        self._progress_hook = progress_hook
 
-        Public contract: ``MaterialInputOrchestrator.process(source) -> ProcessingResult``.
-        """
-        _step4_unimplemented('MaterialInputOrchestrator.process')
+    def register_adapter(self, media_type: str, adapter: MediaAdapter) -> None:
+        """media typeとadapterを一意に登録する。"""
+        if not media_type:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "media_type is required")
+        if adapter is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "adapter is required")
+        if media_type in self._adapters:
+            raise AppError(ErrorCode.CONFLICT, f"adapter already registered for media_type: {media_type}")
+        self._adapters[media_type] = adapter
+
+    def process(self, source: IngestSource) -> ProcessingResult:
+        """text/pdf/imageを対応adapterへdispatchし状態・進捗を更新する。"""
+        if source is None or not source.source_id or not source.media_type or not source.path:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "source_id, media_type and path are required")
+
+        if source.media_type in _PERMANENTLY_UNSUPPORTED_MEDIA_TYPES:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                f"unsupported_media_type: {source.media_type}",
+            )
+
+        adapter = self._adapters.get(source.media_type)
+        if adapter is None:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                f"unsupported_media_type: {source.media_type}",
+            )
+
+        self._notify(0, 1, f"processing {source.source_id}")
+        try:
+            structured = adapter.process(source.path, source.context)
+        except AppError as exc:
+            self._notify(1, 1, f"failed {source.source_id}")
+            return ProcessingResult(
+                source_id=source.source_id,
+                media_type=source.media_type,
+                status="failed",
+                structured=None,
+                error=exc.to_public_dict(),
+            )
+
+        self._notify(1, 1, f"structured {source.source_id}")
+        return ProcessingResult(
+            source_id=source.source_id,
+            media_type=source.media_type,
+            status="structured",
+            structured=structured,
+            error=None,
+        )
+
+    def _notify(self, current: int, total: int, message: str) -> None:
+        if self._progress_hook is not None:
+            self._progress_hook(current, total, message)

@@ -1,120 +1,164 @@
 <script setup lang="ts">
 /**
- * STEP4 Vue scaffold for electron/renderer/screens/ProjectList.vue.
- * The approved UI contract and related test cases are recorded below.
+ * electron/renderer/screens/ProjectList.vue — 公開契約: Project list/create UI.
+ *
+ * Contract: docs/test-cases/TASK-UI-001-project-list-and-create-screen.md
+ * Spec: docs/screens/01-project-list-and-create.md
  */
-const step4PublicContracts = [
-  {
-    "taskId": "TASK-UI-001",
-    "symbol": "Project list/create UI",
-    "contract": "empty/loading/success/error/disabledとkeyboard操作を実装する。"
-  }
-] as const;
-const step4TestCases = [
-  {
-    "id": "TC-UI-001-01",
-    "priority": "P0",
-    "layer": "unit",
-    "title": "empty/loading/error",
-    "given": "各service状態",
-    "when": "画面表示",
-    "then": "仕様の文言・再試行・skeletonを表示",
-    "testFile": "`electron/tests/project_ipc.test.ts`"
-  },
-  {
-    "id": "TC-UI-001-02",
-    "priority": "P0",
-    "layer": "unit",
-    "title": "作成disabled",
-    "given": "必須項目不足",
-    "when": "form操作",
-    "then": "確定button disabled",
-    "testFile": "`electron/renderer/tests/ProjectList.test.ts`"
-  },
-  {
-    "id": "TC-UI-001-03",
-    "priority": "P0",
-    "layer": "unit",
-    "title": "keyboard",
-    "given": "formへTab/Enter",
-    "when": "操作",
-    "then": "順序移動し有効時だけ作成",
-    "testFile": "`electron/tests/project_ipc.test.ts`"
-  },
-  {
-    "id": "TC-UI-001-04",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "一覧",
-    "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態",
-    "when": "`registerProjectIpcHandlers(context)`を通じて「一覧」を実行する",
-    "then": "必要項目を欠かさず安定順で返し、空一覧も正常結果として扱う。",
-    "testFile": "`electron/renderer/tests/ProjectList.test.ts`"
-  },
-  {
-    "id": "TC-UI-001-05",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "新規作成form",
-    "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態",
-    "when": "`registerProjectIpcHandlers(context)`を通じて「新規作成form」を実行する",
-    "then": "「新規作成form」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。",
-    "testFile": "`electron/tests/project_ipc.test.ts`"
-  },
-  {
-    "id": "TC-UI-001-06",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "必須validation",
-    "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態",
-    "when": "`registerProjectIpcHandlers(context)`を通じて「必須validation」を実行する",
-    "then": "正常値を受理し、仕様違反を副作用前に検出して具体的なerror codeを返す。",
-    "testFile": "`electron/renderer/tests/ProjectList.test.ts`"
-  },
-  {
-    "id": "TC-UI-001-07",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "Enter/Tab",
-    "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態",
-    "when": "`registerProjectIpcHandlers(context)`を通じて「Enter/Tab」を実行する",
-    "then": "「Enter/Tab」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。",
-    "testFile": "`electron/tests/project_ipc.test.ts`"
-  },
-  {
-    "id": "TC-UI-001-08",
-    "priority": "P0",
-    "layer": "unit",
-    "title": "必須入力欠落",
-    "given": "主ID、必須path、必須設定のいずれかが欠落した入力",
-    "when": "`registerProjectIpcHandlers(context)`を実行する",
-    "then": "副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。",
-    "testFile": "`electron/renderer/tests/ProjectList.test.ts`"
-  },
-  {
-    "id": "TC-UI-001-09",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "再実行時の決定性",
-    "given": "同じ入力、同じ設定、同じ依存応答",
-    "when": "`registerProjectIpcHandlers(context)`を2回実行する",
-    "then": "仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。",
-    "testFile": "`electron/tests/project_ipc.test.ts`"
-  }
-] as const;
+import { computed, onMounted, reactive, ref } from "vue";
+import { createProject, listProjects, type CreateProjectFormInput, type ProjectSummaryDto } from "../api/projects";
 
-function step4Unimplemented(): never {
-  throw new Error("STEP4 source scaffold is not implemented: electron/renderer/screens/ProjectList.vue");
+type LoadState = "loading" | "success" | "error" | "empty";
+
+const SOURCE_STRATEGY_OPTIONS = ["upload_files", "manual_notes", "external_links"] as const;
+
+const projects = ref<ProjectSummaryDto[]>([]);
+const loadState = ref<LoadState>("loading");
+const loadErrorMessage = ref("");
+
+const form = reactive({
+  title: "",
+  domain: "",
+  purpose: "",
+  usagePurpose: "personal_learning",
+  targetAudienceDescription: "",
+  sourceStrategySet: {} as Record<string, boolean>,
+});
+
+const createError = ref("");
+const creating = ref(false);
+
+const selectedSourceStrategies = computed(() =>
+  SOURCE_STRATEGY_OPTIONS.filter((option) => form.sourceStrategySet[option]),
+);
+
+const isFormValid = computed(() => {
+  return (
+    form.title.trim().length > 0 &&
+    form.domain.trim().length > 0 &&
+    form.purpose.trim().length > 0 &&
+    form.usagePurpose.trim().length > 0 &&
+    form.targetAudienceDescription.trim().length > 0 &&
+    selectedSourceStrategies.value.length > 0
+  );
+});
+
+async function loadProjects(): Promise<void> {
+  loadState.value = "loading";
+  try {
+    const result = await listProjects();
+    projects.value = [...result.projects];
+    loadState.value = result.projects.length === 0 ? "empty" : "success";
+  } catch (err) {
+    loadErrorMessage.value = err instanceof Error ? err.message : String(err);
+    loadState.value = "error";
+  }
 }
 
-void step4PublicContracts;
-void step4TestCases;
-void step4Unimplemented;
+async function submitCreate(): Promise<void> {
+  if (!isFormValid.value || creating.value) {
+    return;
+  }
+  creating.value = true;
+  createError.value = "";
+  try {
+    const input: CreateProjectFormInput = {
+      title: form.title,
+      domain: form.domain,
+      purpose: form.purpose,
+      usagePurpose: form.usagePurpose,
+      targetAudienceDescription: form.targetAudienceDescription,
+      sourceStrategy: selectedSourceStrategies.value,
+    };
+    await createProject(input);
+    form.title = "";
+    form.domain = "";
+    form.purpose = "";
+    form.targetAudienceDescription = "";
+    form.sourceStrategySet = {};
+    await loadProjects();
+  } catch (err) {
+    createError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    creating.value = false;
+  }
+}
+
+function handleFormKeydown(event: KeyboardEvent): void {
+  if (event.key === "Enter" && isFormValid.value && !creating.value) {
+    event.preventDefault();
+    void submitCreate();
+  }
+}
+
+function toggleSourceStrategy(option: string): void {
+  form.sourceStrategySet = { ...form.sourceStrategySet, [option]: !form.sourceStrategySet[option] };
+}
+
+onMounted(() => {
+  void loadProjects();
+});
+
+defineExpose({ loadProjects, submitCreate, isFormValid });
 </script>
 
 <template>
-  <section data-step4-scaffold="ProjectList" aria-busy="true">
-    <h1>ProjectList</h1>
-    <p>STEP4 source scaffold. Claude Code will implement this approved screen contract.</p>
+  <section aria-label="Project一覧">
+    <h1>Project</h1>
+
+    <div v-if="loadState === 'loading'" data-testid="skeleton" role="status">読み込み中…</div>
+
+    <div v-else-if="loadState === 'error'" data-testid="error-summary" role="alert">
+      <p>{{ loadErrorMessage }}</p>
+      <button type="button" data-testid="retry-button" @click="loadProjects">再試行</button>
+    </div>
+
+    <div v-else-if="loadState === 'empty'" data-testid="empty-state">
+      <p>最初のプロジェクトを作成しましょう。</p>
+    </div>
+
+    <ul v-else data-testid="project-list">
+      <li v-for="project in projects" :key="project.projectId" data-testid="project-item">
+        <span>{{ project.title }}</span>
+        <span>{{ project.planningStage }}</span>
+        <span>{{ project.updatedAt }}</span>
+      </li>
+    </ul>
+
+    <form data-testid="create-form" @keydown="handleFormKeydown" @submit.prevent="submitCreate">
+      <label>
+        タイトル
+        <input v-model="form.title" data-testid="field-title" type="text" tabindex="1" />
+      </label>
+      <label>
+        ドメイン
+        <input v-model="form.domain" data-testid="field-domain" type="text" tabindex="2" />
+      </label>
+      <label>
+        目的
+        <textarea v-model="form.purpose" data-testid="field-purpose" tabindex="3"></textarea>
+      </label>
+      <label>
+        利用目的
+        <input v-model="form.usagePurpose" data-testid="field-usage-purpose" type="text" tabindex="4" />
+      </label>
+      <label>
+        想定読者
+        <input v-model="form.targetAudienceDescription" data-testid="field-target-audience" type="text" tabindex="5" />
+      </label>
+      <fieldset data-testid="field-source-strategy">
+        <label v-for="option in SOURCE_STRATEGY_OPTIONS" :key="option">
+          <input
+            type="checkbox"
+            :checked="!!form.sourceStrategySet[option]"
+            tabindex="6"
+            @change="toggleSourceStrategy(option)"
+          />
+          {{ option }}
+        </label>
+      </fieldset>
+      <p v-if="createError" role="alert" data-testid="create-error">{{ createError }}</p>
+      <button type="submit" data-testid="submit-button" tabindex="7" :disabled="!isFormValid || creating">作成</button>
+    </form>
   </section>
 </template>

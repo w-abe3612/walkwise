@@ -1,9 +1,8 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
-generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+version: '1.2'
+last_updated: '2026-07-20'
 related_tasks:
 - TASK-DESKTOP-003
 - TASK-E2E-001
@@ -43,9 +42,16 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `electron/tests/e2e/mvp-flow.test.ts` — 存在
-- `tests/integration/test_mvp_flow.py` — 現在のダンプでは欠落
-- `tests/integration/test_sample_book_e2e.py` — 存在
+- `electron/tests/e2e/mvp-flow.test.ts` — `TASK-DESKTOP-003`完了。TC-02,04,06,08,10
+  (計5 case)、実測pass済み(2026-07-20)。TC-12(integration_live)は
+  `WALKWISE_RUN_INTEGRATION_LIVE`未設定のため既定skip。
+- `tests/integration/test_mvp_flow.py` — `TASK-DESKTOP-003`完了。TC-01,03,05,07,09
+  (計5 case)、実測pass済み(2026-07-20)。TC-11(integration_smoke)は
+  `WALKWISE_PYTHON_EXECUTABLE`未設定のため既定skip。
+- `tests/integration/test_sample_book_e2e.py` — `TASK-E2E-001`完了。TC-01〜10
+  (計10 case)、実測pass済み(2026-07-20)。TC-11(integration_smoke)/
+  TC-12(integration_live)は`voicevox_connectivity_gate`を再利用し、
+  `VOICEVOX_URL`未設定のため既定skip。
 
 ## 5. 収集・型確認
 
@@ -150,9 +156,13 @@ npm test
 - 対象test fileがすべて収集される。
 - 未知marker、import error、TypeScript型errorがない。
 - 通常テストが外部接続しない。
-- STEP3空実装段階では、意図したstrict xfailまたはopt-in skipだけになる。
-- Claude Code本実装後は、対象タスクのxfailを解除し、対象テストがpassする。
-- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない。
+- `TASK-DESKTOP-003`の対象10 case(TS 5件+Python 5件)はpass済み
+  (2026-07-20実測)。`TASK-E2E-001`(`test_sample_book_e2e.py`)の
+  TC-01〜10(計10 case)もpass済み(2026-07-20実測)。TC-11/TC-12は
+  `VOICEVOX_URL`未設定のため既定skip。
+- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない
+  (2026-07-20実測: Python 381 passed/23 deselected/50 xfailed、
+  Vitest 16 test files/76 tests、73 passed+3 skipped、変化なし)。
 
 ## 11. 停止条件
 

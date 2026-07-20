@@ -1,60 +1,108 @@
 /**
- * STEP3 test scaffold for TASK-RELEASE-001: Windows package・runtime同梱・license/privacy/backup.
+ * Test suite for TASK-RELEASE-001: Windows package・runtime同梱・license/privacy/backup.
  * Contract: docs/test-cases/TASK-RELEASE-001-windows-packaging-security-licenses-and-backup.md
- * Release scope: MVP.
- * The file intentionally imports no production module before STEP4.
- * Vitest test.fails is the strict-xfail equivalent: an unexpected pass fails.
+ * Cases in this file: TC-RELEASE-001-01, 04, 07, 10.
  */
 
-import { describe, test } from "vitest";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, test } from "vitest";
+
+import { resolveRuntimeDependencies } from "../main/runtime";
+
+const REPO_ROOT = join(__dirname, "..", "..");
+const ELECTRON_BUILDER_YML_PATH = join(REPO_ROOT, "electron-builder.yml");
+const RELEASE_MANIFEST_PATH = join(REPO_ROOT, "resources", "release-manifest.json");
+
+function readReleaseManifest(): {
+  code_signing: { signed: boolean; risk: string; mitigation: string };
+  user_data: { stored_in_install_directory: boolean; deleted_on_uninstall: boolean };
+  third_party_licenses: readonly { name: string; license: string; bundled: boolean }[];
+} {
+  return JSON.parse(readFileSync(RELEASE_MANIFEST_PATH, "utf-8"));
+}
 
 describe("TASK-RELEASE-001 Windows package・runtime同梱・license/privacy/backup", () => {
-  test.fails("TC-RELEASE-001-01: uninstall data保持 [e2e/P0]", async () => {
-    /**
-     * Contract: docs/test-cases/TASK-RELEASE-001-windows-packaging-security-licenses-and-backup.md
-     * Given: 利用者Projectがあるpackage
-     * When: uninstall scenario
-     * Then: 利用者dataを自動削除しない
-     * STEP7: import only approved symbols and replace this explicit error
-     * with concrete arrange/act/assert logic while preserving the case ID.
-     */
-    throw new Error("STEP3 scaffold not implemented: TC-RELEASE-001-01");
+  test("TC-RELEASE-001-01: uninstall data保持 [e2e/P0]", () => {
+    const builderConfig = readFileSync(ELECTRON_BUILDER_YML_PATH, "utf-8");
+    expect(builderConfig).toMatch(/deleteAppDataOnUninstall:\s*false/);
+
+    const manifest = readReleaseManifest();
+    expect(manifest.user_data.deleted_on_uninstall).toBe(false);
+    expect(manifest.user_data.stored_in_install_directory).toBe(false);
+
+    // uninstallシナリオを、install先ディレクトリとは分離した利用者データ領域でsimulateする。
+    const scratchRoot = mkdtempSync(join(tmpdir(), "walkwise-uninstall-"));
+    const installDir = join(scratchRoot, "install");
+    const userDataDir = join(scratchRoot, "userdata");
+    mkdirSync(installDir, { recursive: true });
+    mkdirSync(join(userDataDir, "projects", "sample-book"), { recursive: true });
+    writeFileSync(join(installDir, "Walkwise.exe"), "fake-executable");
+    writeFileSync(join(userDataDir, "app.db"), "fake-sqlite-bytes");
+    writeFileSync(join(userDataDir, "projects", "sample-book", "book.json"), "{}");
+
+    // uninstall: install先ディレクトリだけを削除する(5.8節)。
+    rmSync(installDir, { recursive: true, force: true });
+
+    expect(existsSync(installDir)).toBe(false);
+    expect(existsSync(join(userDataDir, "app.db"))).toBe(true);
+    expect(existsSync(join(userDataDir, "projects", "sample-book", "book.json"))).toBe(true);
+
+    rmSync(scratchRoot, { recursive: true, force: true });
   });
 
-  test.fails("TC-RELEASE-001-04: Windows target [unit/P1]", async () => {
-    /**
-     * Contract: docs/test-cases/TASK-RELEASE-001-windows-packaging-security-licenses-and-backup.md
-     * Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-     * When: `Windows packaging contract`を通じて「Windows target」を実行する
-     * Then: 「Windows target」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。
-     * STEP7: import only approved symbols and replace this explicit error
-     * with concrete arrange/act/assert logic while preserving the case ID.
-     */
-    throw new Error("STEP3 scaffold not implemented: TC-RELEASE-001-04");
+  test("TC-RELEASE-001-04: Windows target [unit/P1]", () => {
+    const builderConfig = readFileSync(ELECTRON_BUILDER_YML_PATH, "utf-8");
+    expect(builderConfig).toMatch(/target:\s*nsis/);
+    expect(builderConfig).toMatch(/arch:\s*\n\s*-\s*x64/);
+    expect(builderConfig).not.toMatch(/dmg|AppImage|deb|rpm|pkg:/);
+
+    const manifest = readReleaseManifest();
+    expect(manifest).toHaveProperty("code_signing");
   });
 
-  test.fails("TC-RELEASE-001-07: code signing未実施表示 [unit/P1]", async () => {
-    /**
-     * Contract: docs/test-cases/TASK-RELEASE-001-windows-packaging-security-licenses-and-backup.md
-     * Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-     * When: `Windows packaging contract`を通じて「code signing未実施表示」を実行する
-     * Then: 「code signing未実施表示」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。
-     * STEP7: import only approved symbols and replace this explicit error
-     * with concrete arrange/act/assert logic while preserving the case ID.
-     */
-    throw new Error("STEP3 scaffold not implemented: TC-RELEASE-001-07");
+  test("TC-RELEASE-001-07: code signing未実施表示 [unit/P1]", () => {
+    const builderConfig = readFileSync(ELECTRON_BUILDER_YML_PATH, "utf-8");
+    expect(builderConfig).toMatch(/forceCodeSigning:\s*false/);
+
+    const manifest = readReleaseManifest();
+    expect(manifest.code_signing.signed).toBe(false);
+    expect(manifest.code_signing.risk.length).toBeGreaterThan(0);
+    expect(manifest.code_signing.mitigation.length).toBeGreaterThan(0);
   });
 
-  test.fails("TC-RELEASE-001-10: 入力・既存成果物の不変性 [unit/P0]", async () => {
-    /**
-     * Contract: docs/test-cases/TASK-RELEASE-001-windows-packaging-security-licenses-and-backup.md
-     * Given: hash取得済みの入力と既存正常成果物
-     * When: 正常処理または意図的な失敗を発生させる
-     * Then: 入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。
-     * STEP7: import only approved symbols and replace this explicit error
-     * with concrete arrange/act/assert logic while preserving the case ID.
-     */
-    throw new Error("STEP3 scaffold not implemented: TC-RELEASE-001-10");
-  });
+  test("TC-RELEASE-001-10: 入力・既存成果物の不変性 [unit/P0]", async () => {
+    const beforeBuilderConfig = readFileSync(ELECTRON_BUILDER_YML_PATH, "utf-8");
+    const beforeManifest = readFileSync(RELEASE_MANIFEST_PATH, "utf-8");
 
+    const probeVersion = async (command: string) => {
+      if (command === "missing-tool") {
+        return { stdout: "", stderr: "command not found", exitCode: 127 };
+      }
+      return { stdout: `${command} version 1.0.0`, stderr: "", exitCode: 0 };
+    };
+
+    const first = await resolveRuntimeDependencies({
+      dependencies: [
+        { id: "python", command: "python" },
+        { id: "ffmpeg", command: "missing-tool" },
+      ],
+      probeVersion,
+    });
+    const second = await resolveRuntimeDependencies({
+      dependencies: [
+        { id: "python", command: "python" },
+        { id: "ffmpeg", command: "missing-tool" },
+      ],
+      probeVersion,
+    });
+
+    expect(first).toEqual(second);
+    expect(first[0].available).toBe(true);
+    expect(first[1].available).toBe(false);
+
+    expect(readFileSync(ELECTRON_BUILDER_YML_PATH, "utf-8")).toBe(beforeBuilderConfig);
+    expect(readFileSync(RELEASE_MANIFEST_PATH, "utf-8")).toBe(beforeManifest);
+  });
 });

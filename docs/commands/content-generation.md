@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-20'
 related_tasks:
 - TASK-AI-003
 - TASK-CURRICULUM-001
@@ -49,14 +50,19 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_chapter_spec_schema.py` — 現在のダンプでは欠落
-- `tests/test_coverage_map.py` — 現在のダンプでは欠落
-- `tests/test_curriculum_pipeline.py` — 現在のダンプでは欠落
-- `tests/test_draft_generation.py` — 現在のダンプでは欠落
-- `tests/test_narration_transformations.py` — 現在のダンプでは欠落
-- `tests/test_script_schema.py` — 現在のダンプでは欠落
-- `tests/test_source_analysis_pipeline.py` — 現在のダンプでは欠落
-- `tests/test_verified_script_pipeline.py` — 現在のダンプでは欠落
+- `tests/test_source_analysis_pipeline.py`
+- `tests/test_coverage_map.py`
+- `tests/test_chapter_spec_schema.py` — 現在のダンプでは欠落(`TASK-CURRICULUM-001`未着手)
+- `tests/test_curriculum_pipeline.py` — 現在のダンプでは欠落(`TASK-CURRICULUM-001`未着手)
+- `tests/test_draft_generation.py` — 現在のダンプでは欠落(`TASK-SCRIPT-001`未着手)
+- `tests/test_script_schema.py` — 現在のダンプでは欠落(`TASK-SCRIPT-001`未着手)
+- `tests/test_narration_transformations.py` — 現在のダンプでは欠落(`TASK-NARRATION-001`未着手)
+- `tests/test_verified_script_pipeline.py` — 現在のダンプでは欠落(`TASK-NARRATION-001`未着手)
+
+現在の存在有無は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。`TASK-AI-003`は
+本実装済みであり、対象10ケース(TC-AI-003-01〜10)はpassする。`TASK-CURRICULUM-001`/
+`TASK-SCRIPT-001`/`TASK-NARRATION-001`は未着手であり、対応するtest fileは
+STEP3の`xfail(strict=True)`のままである。
 
 ## 5. 収集・型確認
 

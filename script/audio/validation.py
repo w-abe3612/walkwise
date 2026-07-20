@@ -1,54 +1,139 @@
-from __future__ import annotations
+"""script/audio/validation.py — 公開契約:
+AudioValidator.validate(path, text, thresholds) -> ValidationReport.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/audio/validation.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-AUDIO-002
+Contract: docs/test-cases/TASK-AUDIO-002-audio-validation.md
+Spec: docs/specifications/13-audio-validation.md(3, 4, 9節)
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-AUDIO-002', 'AudioValidator.validate(path, text, thresholds) -> ValidationReport', '破損・0秒・形式不一致をfail、主観項目をreview扱いにする。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-AUDIO-002-01', 'priority': 'P0', 'layer': 'unit', 'title': '破損/0秒', 'given': '破損WAVと0秒WAV', 'when': 'validate', 'then': '常にfail', 'test_file': '`tests/test_audio_validation.py`'},
-    {'id': 'TC-AUDIO-002-02', 'priority': 'P0', 'layer': 'unit', 'title': 'provisional記録', 'given': '暫定thresholdで正常WAV', 'when': 'validate', 'then': 'reportにthreshold_status=provisional', 'test_file': '`tests/test_audio_thresholds.py`'},
-    {'id': 'TC-AUDIO-002-03', 'priority': 'P0', 'layer': 'unit', 'title': 'approved禁止', 'given': 'measured=falseまたは話者2未満', 'when': 'threshold approve', 'then': '拒否する', 'test_file': '`tests/test_audio_validation.py`'},
-    {'id': 'TC-AUDIO-002-04', 'priority': 'P1', 'layer': 'unit', 'title': 'warning/review累積規則は保守的', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`AudioThresholds.load()/validate_approval()`を通じて「warning/review累積規則は保守的」を実行する', 'then': '「warning/review累積規則は保守的」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_audio_thresholds.py`'},
-    {'id': 'TC-AUDIO-002-05', 'priority': 'P1', 'layer': 'unit', 'title': '外部ffmpeg adapter境界', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`AudioThresholds.load()/validate_approval()`を通じて「外部ffmpeg adapter境界」を実行する', 'then': '「外部ffmpeg adapter境界」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_audio_validation.py`'},
-    {'id': 'TC-AUDIO-002-06', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`AudioThresholds.load()/validate_approval()`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_audio_thresholds.py`'},
-    {'id': 'TC-AUDIO-002-07', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`AudioThresholds.load()/validate_approval()`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_audio_validation.py`'},
-    {'id': 'TC-AUDIO-002-08', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_audio_thresholds.py`'},
-    {'id': 'TC-AUDIO-002-09', 'priority': 'P0', 'layer': 'integration_smoke', 'title': 'ffmpeg/ffprobe runtimeの疎通確認', 'given': '実接続テストが明示的に有効化され、必要な設定が存在する', 'when': '`ffmpeg -version`と`ffprobe -version`を実行し、実行可能・version取得可能であることだけを確認する。', 'then': 'ConnectivityResultを返す。失敗時は原因を秘密値なしで報告し、実機能テストを開始しない。', 'test_file': '`tests/test_audio_validation.py`'},
-    {'id': 'TC-AUDIO-002-10', 'priority': 'P1', 'layer': 'integration_live', 'title': 'ffmpeg/ffprobe runtimeの実機能テスト', 'given': '`ffmpeg_connectivity_gate`が成功済み', 'when': '疎通成功後、短い固定WAVを測定しduration/peak等の必須値が取得できることを確認する。', 'then': '最小の実機能結果を検証する。疎通fixtureなしでこのテストを単独実行できない。', 'test_file': '`tests/test_audio_thresholds.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/audio/validation.py)")
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
 
+from script.audio.measurements import AudioMeasurementAdapter
+from script.audio.thresholds import AudioThresholdSet
+from script.core.errors import AppError, ErrorCode
+
+
+class ValidationStatus(str, Enum):
+    """13-audio-validation.md 3節。"""
+
+    PASS = "pass"
+    WARNING = "warning"
+    FAIL = "fail"
+    REVIEW_REQUIRED = "review_required"
+
+
+# 保守的な累積規則: fail > review_required > warning > pass の優先順位で、
+# より軽い判定がより重い判定を覆い隠さない(13-audio-validation.md 3節)。
+_SEVERITY_ORDER = (ValidationStatus.FAIL, ValidationStatus.REVIEW_REQUIRED, ValidationStatus.WARNING)
+
+
+@dataclass(frozen=True)
+class ValidationIssue:
+    code: str
+    severity: str
+    value: float | None = None
+    threshold: float | None = None
+
+
+@dataclass(frozen=True)
 class ValidationReport:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """AudioValidator.validate()の戻り値(13-audio-validation.md 9節のreport形式)。"""
+
+    status: ValidationStatus
+    threshold_status: str
+    issues: tuple[ValidationIssue, ...] = ()
+    duration_seconds: float | None = None
+    sample_rate_hz: int | None = None
+    channels: int | None = None
+
 
 class AudioValidator:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def validate(self, path: Any, text: Any, thresholds: Any) -> ValidationReport:
-        """破損・0秒・形式不一致をfail、主観項目をreview扱いにする。
+    """破損・0秒・形式不一致を常にfail、主観品質項目をreview_required扱いにする。"""
 
-        Public contract: ``AudioValidator.validate(path, text, thresholds) -> ValidationReport``.
-        """
-        _step4_unimplemented('AudioValidator.validate')
+    def __init__(self, *, measurement_adapter: AudioMeasurementAdapter | None = None) -> None:
+        self._adapter = measurement_adapter if measurement_adapter is not None else AudioMeasurementAdapter()
+
+    def validate(self, path: Path | str, text: str, thresholds: AudioThresholdSet) -> ValidationReport:
+        """破損・0秒・形式不一致をfail、主観項目をreview扱いにする。"""
+        if path is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "path is required")
+        if text is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "text is required")
+        if thresholds is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "thresholds is required")
+
+        try:
+            measurement = self._adapter.measure(path)
+        except AppError:
+            # 破損・0秒・読込不能は常にfail(audio-validation-thresholds.md 5.2節: warningへ格下げしない)。
+            return ValidationReport(
+                status=ValidationStatus.FAIL,
+                threshold_status=thresholds.status,
+                issues=(ValidationIssue(code="corrupted_or_unreadable", severity="fail"),),
+            )
+
+        issues: list[ValidationIssue] = []
+
+        if measurement.duration_seconds <= 0 or measurement.duration_seconds < thresholds.minimum_duration_seconds:
+            issues.append(
+                ValidationIssue(
+                    code="duration_too_short",
+                    severity="fail",
+                    value=measurement.duration_seconds,
+                    threshold=thresholds.minimum_duration_seconds,
+                )
+            )
+
+        if measurement.silence_ratio is not None:
+            if measurement.silence_ratio >= (1.0 - thresholds.minimum_non_silent_ratio):
+                issues.append(
+                    ValidationIssue(code="mostly_silent", severity="fail", value=measurement.silence_ratio)
+                )
+            elif measurement.silence_ratio > 0.5:
+                issues.append(
+                    ValidationIssue(code="long_silence", severity="warning", value=measurement.silence_ratio)
+                )
+
+        if measurement.peak_dbfs is not None and measurement.peak_dbfs > thresholds.peak.maximum_dbfs:
+            issues.append(
+                ValidationIssue(
+                    code="clipping",
+                    severity="review_required",
+                    value=measurement.peak_dbfs,
+                    threshold=thresholds.peak.maximum_dbfs,
+                )
+            )
+
+        if text and measurement.duration_seconds > 0:
+            characters_per_second = len(text) / measurement.duration_seconds
+            ratio = thresholds.text_duration_ratio
+            if not (ratio.minimum_characters_per_second <= characters_per_second <= ratio.maximum_characters_per_second):
+                issues.append(
+                    ValidationIssue(
+                        code="text_duration_ratio_out_of_range",
+                        severity="warning",
+                        value=characters_per_second,
+                    )
+                )
+
+        status = self._aggregate_status(issues)
+
+        return ValidationReport(
+            status=status,
+            threshold_status=thresholds.status,
+            issues=tuple(issues),
+            duration_seconds=measurement.duration_seconds,
+            sample_rate_hz=measurement.sample_rate_hz,
+            channels=measurement.channels,
+        )
+
+    @staticmethod
+    def _aggregate_status(issues: list[ValidationIssue]) -> ValidationStatus:
+        severities = {issue.severity for issue in issues}
+        for status in _SEVERITY_ORDER:
+            if status.value in severities:
+                return status
+        return ValidationStatus.PASS

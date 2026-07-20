@@ -1,120 +1,118 @@
 <script setup lang="ts">
 /**
- * STEP4 Vue scaffold for electron/renderer/screens/JobsAndArtifacts.vue.
- * The approved UI contract and related test cases are recorded below.
+ * electron/renderer/screens/JobsAndArtifacts.vue — 公開契約: jobs/artifacts UI.
+ *
+ * Contract: docs/test-cases/TASK-UI-004-job-progress-and-artifacts-screens.md
+ * Spec: docs/screens/04-job-progress.md, docs/screens/05-artifacts.md
+ *
+ * router/store(TASK-UI-005)へ依存せず、実際のIPC呼び出しはpropsとして注入する。
  */
-const step4PublicContracts = [
-  {
-    "taskId": "TASK-UI-004",
-    "symbol": "jobs/artifacts UI",
-    "contract": "進捗、stale注記、cancel確認、retry、最新成果物を表示する。"
-  }
-] as const;
-const step4TestCases = [
-  {
-    "id": "TC-UI-004-01",
-    "priority": "P0",
-    "layer": "unit",
-    "title": "cancel確認",
-    "given": "running Job",
-    "when": "cancel click",
-    "then": "確認後だけIPCを呼ぶ",
-    "testFile": "`electron/tests/job_artifact_ipc.test.ts`"
-  },
-  {
-    "id": "TC-UI-004-02",
-    "priority": "P0",
-    "layer": "unit",
-    "title": "retry条件",
-    "given": "failed/cancelled/other",
-    "when": "render",
-    "then": "前2つだけretry可能",
-    "testFile": "`electron/renderer/tests/JobsAndArtifacts.test.ts`"
-  },
-  {
-    "id": "TC-UI-004-03",
-    "priority": "P0",
-    "layer": "unit",
-    "title": "最新Artifact",
-    "given": "複数version",
-    "when": "render",
-    "then": "最新を既定表示し旧versionを破壊しない",
-    "testFile": "`electron/tests/job_artifact_ipc.test.ts`"
-  },
-  {
-    "id": "TC-UI-004-04",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "job:get/subscribe/cancel/start retry",
-    "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態",
-    "when": "`job:get/subscribe/cancel/retry handlers`を通じて「job:get/subscribe/cancel/start retry」を実行する",
-    "then": "再試行可能errorだけを上限回数内で再試行し、同一requestの成果物を重複登録しない。",
-    "testFile": "`electron/renderer/tests/JobsAndArtifacts.test.ts`"
-  },
-  {
-    "id": "TC-UI-004-05",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "状態別button",
-    "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態",
-    "when": "`job:get/subscribe/cancel/retry handlers`を通じて「状態別button」を実行する",
-    "then": "承認済み状態遷移表にある遷移だけが成功し、不正遷移では永続状態を変更しない。",
-    "testFile": "`electron/tests/job_artifact_ipc.test.ts`"
-  },
-  {
-    "id": "TC-UI-004-06",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "stale注記",
-    "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態",
-    "when": "`job:get/subscribe/cancel/retry handlers`を通じて「stale注記」を実行する",
-    "then": "「stale注記」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。",
-    "testFile": "`electron/renderer/tests/JobsAndArtifacts.test.ts`"
-  },
-  {
-    "id": "TC-UI-004-07",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "技術detail折畳み",
-    "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態",
-    "when": "`job:get/subscribe/cancel/retry handlers`を通じて「技術detail折畳み」を実行する",
-    "then": "「技術detail折畳み」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。",
-    "testFile": "`electron/tests/job_artifact_ipc.test.ts`"
-  },
-  {
-    "id": "TC-UI-004-08",
-    "priority": "P0",
-    "layer": "unit",
-    "title": "必須入力欠落",
-    "given": "主ID、必須path、必須設定のいずれかが欠落した入力",
-    "when": "`job:get/subscribe/cancel/retry handlers`を実行する",
-    "then": "副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。",
-    "testFile": "`electron/renderer/tests/JobsAndArtifacts.test.ts`"
-  },
-  {
-    "id": "TC-UI-004-09",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "再実行時の決定性",
-    "given": "同じ入力、同じ設定、同じ依存応答",
-    "when": "`job:get/subscribe/cancel/retry handlers`を2回実行する",
-    "then": "仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。",
-    "testFile": "`electron/tests/job_artifact_ipc.test.ts`"
-  }
-] as const;
+import { computed, reactive } from "vue";
+import type { ArtifactItem, JobItem, JobStatus } from "./JobsAndArtifacts.types";
 
-function step4Unimplemented(): never {
-  throw new Error("STEP4 source scaffold is not implemented: electron/renderer/screens/JobsAndArtifacts.vue");
+const props = defineProps<{
+  jobs: readonly JobItem[];
+  artifacts: readonly ArtifactItem[];
+  cancelJob: (jobId: string) => Promise<unknown>;
+  retryJob: (jobId: string) => Promise<unknown>;
+  openFolder: (artifactId: string) => Promise<unknown>;
+}>();
+
+const CANCELLABLE_STATUSES = new Set<JobStatus>(["queued", "running"]);
+const RETRYABLE_STATUSES = new Set<JobStatus>(["failed", "cancelled"]);
+
+const pendingCancelConfirmation = reactive<Record<string, boolean>>({});
+
+function isCancellable(job: JobItem): boolean {
+  return CANCELLABLE_STATUSES.has(job.status);
 }
 
-void step4PublicContracts;
-void step4TestCases;
-void step4Unimplemented;
+function isRetryable(job: JobItem): boolean {
+  return RETRYABLE_STATUSES.has(job.status);
+}
+
+/** 04-job-progress.md 10節: cancelは確認モーダルを経てから実行する。 */
+async function handleCancelClick(jobId: string): Promise<void> {
+  if (!pendingCancelConfirmation[jobId]) {
+    pendingCancelConfirmation[jobId] = true;
+    return;
+  }
+  pendingCancelConfirmation[jobId] = false;
+  await props.cancelJob(jobId);
+}
+
+function cancelDialogVisible(jobId: string): boolean {
+  return !!pendingCancelConfirmation[jobId];
+}
+
+async function handleRetryClick(jobId: string): Promise<void> {
+  await props.retryJob(jobId);
+}
+
+/** 05-artifacts.md 7節: 同一artifact_typeは最新versionのみを既定表示する(旧versionは保持したまま非表示)。 */
+const latestArtifactsByType = computed(() => {
+  const latest = new Map<string, ArtifactItem>();
+  for (const artifact of props.artifacts) {
+    const current = latest.get(artifact.artifactType);
+    if (!current || artifact.versionNumber > current.versionNumber) {
+      latest.set(artifact.artifactType, artifact);
+    }
+  }
+  return [...latest.values()];
+});
+
+defineExpose({ isCancellable, isRetryable, handleCancelClick, handleRetryClick, latestArtifactsByType });
 </script>
 
 <template>
-  <section data-step4-scaffold="JobsAndArtifacts" aria-busy="true">
-    <h1>JobsAndArtifacts</h1>
-    <p>STEP4 source scaffold. Claude Code will implement this approved screen contract.</p>
+  <section aria-label="Job進捗・成果物">
+    <h2>Job一覧</h2>
+    <ul data-testid="job-list">
+      <li v-for="job in jobs" :key="job.jobId" data-testid="job-item">
+        <span data-testid="job-status">{{ job.status }}</span>
+        <span v-if="job.progressTotal" data-testid="job-progress">{{ job.progressCurrent }}/{{ job.progressTotal }}</span>
+        <p v-if="job.stale" data-testid="stale-note">前回異常終了しました</p>
+
+        <details v-if="job.technicalDetail" data-testid="technical-detail">
+          <summary>技術detail</summary>
+          <pre>{{ job.technicalDetail }}</pre>
+        </details>
+
+        <button
+          type="button"
+          data-testid="cancel-button"
+          :disabled="!isCancellable(job)"
+          @click="handleCancelClick(job.jobId)"
+        >
+          cancel
+        </button>
+        <div v-if="cancelDialogVisible(job.jobId)" role="alertdialog" data-testid="cancel-confirm-dialog">
+          <p>実行中の処理を中断します。よろしいですか?</p>
+          <button type="button" data-testid="cancel-confirm-button" @click="handleCancelClick(job.jobId)">
+            中断する
+          </button>
+        </div>
+
+        <button
+          type="button"
+          data-testid="retry-button"
+          :disabled="!isRetryable(job)"
+          @click="handleRetryClick(job.jobId)"
+        >
+          再試行
+        </button>
+      </li>
+    </ul>
+
+    <h2>成果物</h2>
+    <ul data-testid="artifact-list">
+      <li v-for="artifact in latestArtifactsByType" :key="artifact.artifactId" data-testid="artifact-item">
+        <span>{{ artifact.artifactType }} v{{ artifact.versionNumber }}</span>
+        <button type="button" data-testid="open-folder-button" @click="openFolder(artifact.artifactId)">
+          フォルダを開く
+        </button>
+      </li>
+    </ul>
+    <a href="#" data-testid="regenerate-link">再生成</a>
   </section>
 </template>

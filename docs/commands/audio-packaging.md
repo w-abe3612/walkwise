@@ -1,9 +1,8 @@
 ---
 document_type: command_reference
-status: review
-version: '1.0'
-last_updated: '2026-07-19'
-generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+status: complete
+version: '1.1'
+last_updated: '2026-07-20'
 related_tasks:
 - TASK-AUDIO-003
 release_scopes:
@@ -40,9 +39,15 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_audio_packaging.py` — 現在のダンプでは欠落
-- `tests/test_build_pipeline.py` — 現在のダンプでは欠落
-- `tests/test_production_manifest.py` — 現在のダンプでは欠落
+- `tests/test_audio_packaging.py` — TC-01, TC-04, TC-07, TC-10(計4 case)
+- `tests/test_build_pipeline.py` — TC-02, TC-05, TC-08(計3 case)
+- `tests/test_production_manifest.py` — TC-03, TC-06, TC-09(計3 case)
+
+対象10 caseはすべて実装済み・実測passを確認済み(2026-07-20)。
+本タスク単独の外部接続(ffmpeg実行)は不要であり、`ChapterPackager`の
+テストは常にfake `mp3_encoder`を注入する(実ffmpeg encoder関数は
+`script/audio/packaging.py`の`make_ffmpeg_mp3_encoder()`として実装
+済みだが、本タスクの自動テストからは呼び出されない)。
 
 ## 5. 収集・型確認
 
@@ -78,9 +83,10 @@ npm test
 - 対象test fileがすべて収集される。
 - 未知marker、import error、TypeScript型errorがない。
 - 通常テストが外部接続しない。
-- STEP3空実装段階では、意図したstrict xfailまたはopt-in skipだけになる。
-- Claude Code本実装後は、対象タスクのxfailを解除し、対象テストがpassする。
-- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない。
+- 対象10 caseがすべてpassする(2026-07-20実測で確認済み)。
+- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない
+  (2026-07-20実測: 336 passed, 23 deselected, 95 xfailed、予期しない
+  failなし)。
 
 ## 9. 停止条件
 

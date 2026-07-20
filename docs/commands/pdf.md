@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-20'
 related_tasks:
 - TASK-PDF-001
 release_scopes:
@@ -40,8 +41,13 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_pdf_direct_extraction.py` — 現在のダンプでは欠落
-- `tests/test_pdf_extraction_fallback.py` — 現在のダンプでは欠落
+- `tests/test_pdf_direct_extraction.py`
+- `tests/test_pdf_extraction_fallback.py`
+
+現在の存在有無は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。`TASK-PDF-001`は
+本実装済みであり、対象10ケース(TC-PDF-001-01〜10)はpassする。採用ライブラリ
+(PyMuPDF/pypdf)とpage品質閾値は`pdf-direct-text-extraction.md`が明記するとおり
+`provisional`であり、代表PDFでのbenchmark実施後に確定する。
 
 ## 5. 収集・型確認
 

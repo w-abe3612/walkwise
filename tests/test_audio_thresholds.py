@@ -1,117 +1,145 @@
-"""STEP3 test scaffold for TASK-AUDIO-002: 音声自動検査・provisional閾値.
+"""STEP4 test implementation for TASK-AUDIO-002: AudioThresholds / warning-review aggregation.
 
 Contract: docs/test-cases/TASK-AUDIO-002-audio-validation.md
 Release scope: MVP
-Planned production files:
-- script/audio/validation.py
-- script/audio/measurements.py
-- script/audio/thresholds.py
-
-This file is the test-generation source of truth for the cases below.
-STEP3 intentionally imports no production module because STEP4 source
-scaffolds do not exist yet. Claude Code must replace each explicit
-failure with assertions without changing case IDs or contract meaning."""
+"""
 
 from __future__ import annotations
 
+import struct
+import wave
+from pathlib import Path
+
 import pytest
+
+from script.audio.measurements import AudioMeasurement, AudioMeasurementAdapter
+from script.audio.thresholds import AudioThresholds
+from script.audio.validation import AudioValidator, ValidationStatus
+from script.core.errors import AppError
 
 pytestmark = pytest.mark.mvp
 
-@pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-AUDIO-002-02 is not implemented")
-def test_tc_audio_002_02() -> None:
-    """TC-AUDIO-002-02 — provisional記録
-    
-    Contract: docs/test-cases/TASK-AUDIO-002-audio-validation.md
-    Priority: P0
-    Layer: unit
-    Given: 暫定thresholdで正常WAV
-    When: validate
-    Then: reportにthreshold_status=provisional
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-AUDIO-002-02")
+
+def _write_wav(path: Path, *, framerate: int = 24000, nframes: int = 24000, amplitude: int = 5000) -> None:
+    with wave.open(str(path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(framerate)
+        frame_data = struct.pack(f"<{nframes}h", *([amplitude] * nframes))
+        wav_file.writeframes(frame_data)
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-AUDIO-002-04 is not implemented")
+def test_tc_audio_002_02(tmp_path: Path) -> None:
+    """TC-AUDIO-002-02 — provisional記録: 暫定thresholdの正常WAVはreportにthreshold_status=provisional。"""
+    thresholds = AudioThresholds().load()
+    assert thresholds.status == "provisional"
+
+    wav_path = tmp_path / "normal.wav"
+    _write_wav(wav_path, nframes=24000 * 4, amplitude=5000)  # 4秒、6文字/秒程度
+
+    report = AudioValidator().validate(wav_path, "これはテスト用の原稿文です。", thresholds)
+
+    assert report.threshold_status == "provisional"
+    assert report.status is ValidationStatus.PASS
+
+
+class _FixedMeasurementAdapter:
+    """severity集約規則を検証するため、任意の測定値を返す固定adapter。"""
+
+    def __init__(self, measurement: AudioMeasurement) -> None:
+        self._measurement = measurement
+
+    def measure(self, path: object) -> AudioMeasurement:
+        return self._measurement
+
+
+@pytest.mark.unit
 def test_tc_audio_002_04() -> None:
-    """TC-AUDIO-002-04 — warning/review累積規則は保守的
-    
-    Contract: docs/test-cases/TASK-AUDIO-002-audio-validation.md
-    Priority: P1
-    Layer: unit
-    Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-    When: `AudioThresholds.load()/validate_approval()`を通じて「warning/review累積規則は保守的」を実行する
-    Then: 「warning/review累積規則は保守的」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-AUDIO-002-04")
+    """TC-AUDIO-002-04 — warning/review累積規則は保守的: より重い判定が軽い判定を覆い隠さない。"""
+    thresholds = AudioThresholds().load()
+
+    # warningの原因(長い無音)とreview_requiredの原因(clipping)が両方ある場合、review_requiredが勝つ。
+    mixed_measurement = AudioMeasurement(
+        duration_seconds=4.0, sample_rate_hz=24000, channels=1, peak_dbfs=0.0, silence_ratio=0.6
+    )
+    mixed_report = AudioValidator(measurement_adapter=_FixedMeasurementAdapter(mixed_measurement)).validate(
+        "dummy.wav", "text", thresholds
+    )
+    assert mixed_report.status is ValidationStatus.REVIEW_REQUIRED
+
+    # fail原因(duration不足)とwarning原因が両方あっても、failが最終判定になる。
+    fail_and_warning_measurement = AudioMeasurement(
+        duration_seconds=0.1, sample_rate_hz=24000, channels=1, peak_dbfs=-10.0, silence_ratio=0.6
+    )
+    thresholds_strict_peak = AudioThresholds().load()
+    fail_report = AudioValidator(measurement_adapter=_FixedMeasurementAdapter(fail_and_warning_measurement)).validate(
+        "dummy.wav", "text", thresholds_strict_peak
+    )
+    assert fail_report.status is ValidationStatus.FAIL
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-AUDIO-002-06 is not implemented")
-def test_tc_audio_002_06() -> None:
-    """TC-AUDIO-002-06 — 必須入力欠落
-    
-    Contract: docs/test-cases/TASK-AUDIO-002-audio-validation.md
-    Priority: P0
-    Layer: unit
-    Given: 主ID、必須path、必須設定のいずれかが欠落した入力
-    When: `AudioThresholds.load()/validate_approval()`を実行する
-    Then: 副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-AUDIO-002-06")
+def test_tc_audio_002_06(tmp_path: Path) -> None:
+    """TC-AUDIO-002-06 — 必須入力欠落: 副作用前に安定したvalidation errorを返す。"""
+    thresholds = AudioThresholds().load()
+    validator = AudioValidator()
+
+    with pytest.raises(AppError):
+        validator.validate(None, "text", thresholds)  # type: ignore[arg-type]
+
+    with pytest.raises(AppError):
+        validator.validate(tmp_path / "x.wav", None, thresholds)  # type: ignore[arg-type]
+
+    with pytest.raises(AppError):
+        validator.validate(tmp_path / "x.wav", "text", None)  # type: ignore[arg-type]
+
+    with pytest.raises(AppError):
+        AudioThresholds().validate_approval(None)  # type: ignore[arg-type]
+
+    with pytest.raises(AppError):
+        AudioMeasurementAdapter().measure(None)  # type: ignore[arg-type]
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-AUDIO-002-08 is not implemented")
-def test_tc_audio_002_08() -> None:
-    """TC-AUDIO-002-08 — 入力・既存成果物の不変性
-    
-    Contract: docs/test-cases/TASK-AUDIO-002-audio-validation.md
-    Priority: P0
-    Layer: unit
-    Given: hash取得済みの入力と既存正常成果物
-    When: 正常処理または意図的な失敗を発生させる
-    Then: 入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-AUDIO-002-08")
+def test_tc_audio_002_08(tmp_path: Path) -> None:
+    """TC-AUDIO-002-08 — 入力・既存成果物の不変性: 失敗を試みても既存正常成果物は変化しない。"""
+    thresholds = AudioThresholds().load()
+    validator = AudioValidator()
+    wav_path = tmp_path / "normal.wav"
+    _write_wav(wav_path, nframes=24000 * 3)
+
+    good_report = validator.validate(wav_path, "短い原稿です。", thresholds)
+    before = (good_report.status, good_report.threshold_status, good_report.duration_seconds)
+
+    corrupted_path = tmp_path / "corrupted.wav"
+    corrupted_path.write_bytes(b"garbage")
+    validator.validate(corrupted_path, "text", thresholds)  # 失敗ではなくfail reportを返すのみ(例外なし)
+
+    after = (good_report.status, good_report.threshold_status, good_report.duration_seconds)
+    assert before == after
+    assert wav_path.read_bytes()  # 既存の正常WAVは変更されていない
+
 
 @pytest.mark.integration_live
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-AUDIO-002-10 is not implemented")
-def test_tc_audio_002_10(ffmpeg_connectivity_gate: object) -> None:
+def test_tc_audio_002_10(ffmpeg_connectivity_gate, tmp_path: Path) -> None:
     """TC-AUDIO-002-10 — ffmpeg/ffprobe runtimeの実機能テスト
-    
+
     Contract: docs/test-cases/TASK-AUDIO-002-audio-validation.md
     Priority: P1
     Layer: integration_live
     Given: `ffmpeg_connectivity_gate`が成功済み
     When: 疎通成功後、短い固定WAVを測定しduration/peak等の必須値が取得できることを確認する。
     Then: 最小の実機能結果を検証する。疎通fixtureなしでこのテストを単独実行できない。
-    
-    Connectivity prerequisite: ffmpeg_connectivity_gate
-    The live test must not run unless the preceding smoke check succeeds.
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-AUDIO-002-10")
+    """
+    assert ffmpeg_connectivity_gate.available is True
+
+    wav_path = tmp_path / "live-smoke.wav"
+    _write_wav(wav_path, nframes=24000, amplitude=4000)
+
+    adapter = AudioMeasurementAdapter()
+    measurement = adapter.measure(wav_path)
+
+    assert measurement.duration_seconds > 0
+    assert measurement.sample_rate_hz == 24000
+    assert measurement.peak_dbfs is not None

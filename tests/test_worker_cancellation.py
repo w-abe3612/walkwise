@@ -1,113 +1,152 @@
-"""STEP3 test scaffold for TASK-WORKER-002: Python worker cancel・timeout・異常終了復旧.
+"""STEP4 test implementation for TASK-WORKER-002: cooperative cancel / abnormal-exit recovery.
 
 Contract: docs/test-cases/TASK-WORKER-002-python-worker-cancel-timeout-and-recovery.md
 Release scope: MVP
-Planned production files:
-- script/worker/cancellation.py
-- script/worker/runtime.py
-
-This file is the test-generation source of truth for the cases below.
-STEP3 intentionally imports no production module because STEP4 source
-scaffolds do not exist yet. Claude Code must replace each explicit
-failure with assertions without changing case IDs or contract meaning."""
+"""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+
+from script.domain.enums import JobStatus
+from script.domain.models import Job
+from script.worker.cancellation import CancellationToken
+from script.worker.protocol import WorkerEvent, WorkerRequest
+from script.worker.runtime import WorkerRuntime, recover_after_abnormal_exit
 
 pytestmark = pytest.mark.mvp
 
+
 @pytest.mark.integration_mock
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-WORKER-002-01 is not implemented")
 def test_tc_worker_002_01() -> None:
-    """TC-WORKER-002-01 — cooperative cancel
-    
-    Contract: docs/test-cases/TASK-WORKER-002-python-worker-cancel-timeout-and-recovery.md
-    Priority: P0
-    Layer: integration_mock
-    Given: 長処理中にcancel
-    When: runtime
-    Then: cancel_requested→cancelled eventで停止
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-WORKER-002-01")
+    """TC-WORKER-002-01 — cooperative cancel: 長処理中にcancelしcancel_requested→cancelledで停止する。"""
+    flag = {"cancel": False}
+    token = CancellationToken(is_requested=lambda: flag["cancel"])
+
+    def _handler(request: WorkerRequest, token: CancellationToken):
+        yield WorkerEvent(event="progress", job_id=request.job_id, current=1, total=5)
+        token.raise_if_cancelled()
+        yield WorkerEvent(event="progress", job_id=request.job_id, current=2, total=5)
+
+    runtime = WorkerRuntime(_handler, clock=lambda: 0.0)
+    request = WorkerRequest(job_id="job-1", job_type="long_task")
+
+    collected: list[str] = []
+    for event in runtime.run(request, token):
+        collected.append(event.event)
+        if event.event == "progress" and event.current == 1:
+            flag["cancel"] = True
+
+    assert collected == ["started", "progress", "cancel_requested", "cancelled"]
+
 
 @pytest.mark.integration_mock
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-WORKER-002-03 is not implemented")
-def test_tc_worker_002_03() -> None:
-    """TC-WORKER-002-03 — 異常終了
-    
-    Contract: docs/test-cases/TASK-WORKER-002-python-worker-cancel-timeout-and-recovery.md
-    Priority: P0
-    Layer: integration_mock
-    Given: 一時file作成後process kill
-    When: recover
-    Then: 正式成果物へ登録せず既存成果物を保持
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-WORKER-002-03")
+def test_tc_worker_002_03(tmp_path: Path) -> None:
+    """TC-WORKER-002-03 — 異常終了: killされたJobを復旧し正式成果物へ登録せず既存成果物を保持する。"""
+    existing_artifact = tmp_path / "chapter01.mp3"
+    existing_artifact.write_bytes(b"already-registered-good-audio-bytes")
+    before_bytes = existing_artifact.read_bytes()
+
+    partial_output = tmp_path / "chapter01.partial.mp3"
+    partial_output.write_bytes(b"partial-bytes-from-killed-process")
+
+    job = Job(job_id="job-1", build_request_id="br-1", job_type="audio_packaging", status=JobStatus.RUNNING)
+    decision = recover_after_abnormal_exit(job)
+
+    assert decision.job_id == "job-1"
+    assert decision.new_status == JobStatus.FAILED
+    assert decision.reason == "stale_job_detected_on_startup"
+    assert decision.discard_partial_artifacts is True
+    # 復旧判断自体はfilesystemへ触れない純粋な決定関数であり、
+    # 既存正常成果物のbyteは変化しない。
+    assert existing_artifact.read_bytes() == before_bytes
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-WORKER-002-05 is not implemented")
 def test_tc_worker_002_05() -> None:
-    """TC-WORKER-002-05 — force terminate契約
-    
-    Contract: docs/test-cases/TASK-WORKER-002-python-worker-cancel-timeout-and-recovery.md
-    Priority: P1
-    Layer: unit
-    Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-    When: `CancellationToken.requested()/raise_if_cancelled()`を通じて「force terminate契約」を実行する
-    Then: 「force terminate契約」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-WORKER-002-05")
+    """TC-WORKER-002-05 — force terminate契約: grace period超過でhandlerを強制終了する。"""
+    flag = {"cancel": False}
+    token = CancellationToken(is_requested=lambda: flag["cancel"])
+    clock_value = {"t": 0.0}
+    finally_called = {"n": 0}
+
+    def _stubborn_handler(request: WorkerRequest, token: CancellationToken):
+        try:
+            current = 0
+            while True:
+                current += 1
+                yield WorkerEvent(event="progress", job_id=request.job_id, current=current, total=None)
+        finally:
+            finally_called["n"] += 1
+
+    runtime = WorkerRuntime(_stubborn_handler, grace_period_seconds=2.0, clock=lambda: clock_value["t"])
+    request = WorkerRequest(job_id="job-1", job_type="stubborn")
+
+    events: list[WorkerEvent] = []
+    for event in runtime.run(request, token):
+        events.append(event)
+        if event.event == "progress" and event.current == 1:
+            flag["cancel"] = True
+        if event.event == "cancel_requested":
+            clock_value["t"] += 3.0  # grace period(2.0)を超過させる
+
+    assert events[-1].event == "cancelled"
+    assert events[-1].forced is True
+    assert finally_called["n"] == 1  # generator.close()によりhandlerのfinally節が実行された
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-WORKER-002-07 is not implemented")
-def test_tc_worker_002_07() -> None:
-    """TC-WORKER-002-07 — 既存正常成果物保持
-    
-    Contract: docs/test-cases/TASK-WORKER-002-python-worker-cancel-timeout-and-recovery.md
-    Priority: P1
-    Layer: unit
-    Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-    When: `CancellationToken.requested()/raise_if_cancelled()`を通じて「既存正常成果物保持」を実行する
-    Then: 「既存正常成果物保持」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-WORKER-002-07")
+def test_tc_worker_002_07(tmp_path: Path) -> None:
+    """TC-WORKER-002-07 — 既存正常成果物保持: cancel時のcleanupは一時物のみ対象とする。"""
+    good_artifact = tmp_path / "good.mp3"
+    good_artifact.write_bytes(b"existing-good-audio-bytes")
+    before_bytes = good_artifact.read_bytes()
+
+    partial_path = tmp_path / "partial.mp3"
+
+    flag = {"cancel": False}
+    token = CancellationToken(is_requested=lambda: flag["cancel"])
+
+    def _handler(request: WorkerRequest, token: CancellationToken):
+        partial_path.write_bytes(b"partial-in-progress-bytes")
+        yield WorkerEvent(event="progress", job_id=request.job_id, current=1, total=2)
+        token.raise_if_cancelled()
+        yield WorkerEvent(event="progress", job_id=request.job_id, current=2, total=2)
+
+    def _cleanup(request: WorkerRequest) -> None:
+        if partial_path.exists():
+            partial_path.unlink()
+
+    runtime = WorkerRuntime(_handler, clock=lambda: 0.0, cleanup=_cleanup)
+    request = WorkerRequest(job_id="job-1", job_type="task")
+
+    for event in runtime.run(request, token):
+        if event.event == "progress" and event.current == 1:
+            flag["cancel"] = True
+
+    assert good_artifact.read_bytes() == before_bytes
+    assert not partial_path.exists()
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-WORKER-002-09 is not implemented")
 def test_tc_worker_002_09() -> None:
-    """TC-WORKER-002-09 — 再実行時の決定性
-    
-    Contract: docs/test-cases/TASK-WORKER-002-python-worker-cancel-timeout-and-recovery.md
-    Priority: P1
-    Layer: unit
-    Given: 同じ入力、同じ設定、同じ依存応答
-    When: `CancellationToken.requested()/raise_if_cancelled()`を2回実行する
-    Then: 仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-WORKER-002-09")
+    """TC-WORKER-002-09 — 再実行時の決定性: 同じ入力で2回実行しても同じ論理結果になる。"""
+    call_count = {"n": 0}
+
+    def _handler(request: WorkerRequest, token: CancellationToken):
+        call_count["n"] += 1
+        yield WorkerEvent(event="progress", job_id=request.job_id, current=1, total=1)
+
+    def _run() -> list[str]:
+        runtime = WorkerRuntime(_handler, clock=lambda: 0.0)
+        token = CancellationToken()
+        request = WorkerRequest(job_id="job-1", job_type="task")
+        return [event.event for event in runtime.run(request, token)]
+
+    first = _run()
+    second = _run()
+
+    assert first == second == ["started", "progress", "completed"]
+    assert call_count["n"] == 2  # 実行ごとに1回ずつ(重複外部呼出しなし)

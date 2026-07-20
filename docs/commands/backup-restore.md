@@ -1,8 +1,8 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
 related_tasks:
 - TASK-RELEASE-001
@@ -40,9 +40,15 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `electron/tests/packaging_contract.test.ts` — 存在
-- `tests/test_backup_restore.py` — 現在のダンプでは欠落
-- `tests/test_license_manifest.py` — 現在のダンプでは欠落
+- `electron/tests/packaging_contract.test.ts` — `TASK-RELEASE-001`完了。
+  TC-01,04,07,10(計4 case)、実測pass済み(2026-07-20)。
+- `tests/test_backup_restore.py` — `TASK-RELEASE-001`完了。TC-02,05,08
+  (計3 case)、実測pass済み(2026-07-20)。TC-11(integration_smoke)は
+  `WALKWISE_PYTHON_EXECUTABLE`/`FFMPEG_PATH`/`FFPROBE_PATH`/
+  `TESSERACT_CMD`のいずれも未設定のため既定skip。
+- `tests/test_license_manifest.py` — `TASK-RELEASE-001`完了。TC-03,06,09
+  (計3 case)、実測pass済み(2026-07-20)。TC-12(integration_live)は
+  上記env未設定のため既定skip。
 
 ## 5. 収集・型確認
 
@@ -125,7 +131,10 @@ npm test
 - 通常テストが外部接続しない。
 - STEP3空実装段階では、意図したstrict xfailまたはopt-in skipだけになる。
 - Claude Code本実装後は、対象タスクのxfailを解除し、対象テストがpassする。
-- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない。
+- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない
+  (2026-07-20実測: 対象10 case中8 case実測pass(TC-11/12は既定skip)、
+  Python全体387 passed/23 deselected/44 xfailed、npm run typecheck成功、
+  Vitest 73 passed/3 skipped)。
 
 ## 11. 停止条件
 

@@ -1,77 +1,181 @@
-from __future__ import annotations
+"""script/audio/m4b.py — 公開契約:
+M4BTool.check_runtime() -> RuntimeHealth, M4BBuilder.build(chapters, metadata, output) -> M4BResult.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/audio/m4b.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-M4B-001
+Contract: docs/test-cases/TASK-M4B-001-m4b-output.md
+Spec: docs/specifications/m4b-output.md(5.1〜5.5節, 9節)
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-M4B-001', 'M4BTool.check_runtime() -> RuntimeHealth', 'ffmpeg等の実行可能性を先に確認する。'),
-    ('TASK-M4B-001', 'M4BBuilder.build(chapters, metadata, output) -> M4BResult', '承認済み章順とchapter metadataでM4Bを生成する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-M4B-001-01', 'priority': 'P0', 'layer': 'unit', 'title': '承認gate', 'given': '1章が未承認またはfail', 'when': 'build', 'then': 'M4Bを生成しない', 'test_file': '`tests/test_m4b_output.py`'},
-    {'id': 'TC-M4B-001-02', 'priority': 'P0', 'layer': 'integration_live', 'title': 'chapter metadata', 'given': '2章fixture', 'when': 'build/probe', 'then': '章順と開始時刻が一致', 'test_file': '`tests/test_m4b_output.py`'},
-    {'id': 'TC-M4B-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'provisional保持', 'given': '入力reportがprovisional', 'when': 'manifest生成', 'then': 'approvedへ書き換えない', 'test_file': '`tests/test_m4b_output.py`'},
-    {'id': 'TC-M4B-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'ffmpeg等adapter', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`M4BTool.check_runtime() -> RuntimeHealth`を通じて「ffmpeg等adapter」を実行する', 'then': '「ffmpeg等adapter」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_m4b_output.py`'},
-    {'id': 'TC-M4B-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'Artifact登録', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`M4BTool.check_runtime() -> RuntimeHealth`を通じて「Artifact登録」を実行する', 'then': '「Artifact登録」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_m4b_output.py`'},
-    {'id': 'TC-M4B-001-06', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`M4BTool.check_runtime() -> RuntimeHealth`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_m4b_output.py`'},
-    {'id': 'TC-M4B-001-07', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`M4BTool.check_runtime() -> RuntimeHealth`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_m4b_output.py`'},
-    {'id': 'TC-M4B-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_m4b_output.py`'},
-    {'id': 'TC-M4B-001-09', 'priority': 'P0', 'layer': 'integration_smoke', 'title': 'ffmpeg runtimeの疎通確認', 'given': '実接続テストが明示的に有効化され、必要な設定が存在する', 'when': '`ffmpeg -version`を実行し、M4B対応buildであることを最低限確認する。', 'then': 'ConnectivityResultを返す。失敗時は原因を秘密値なしで報告し、実機能テストを開始しない。', 'test_file': '`tests/test_m4b_output.py`'},
-    {'id': 'TC-M4B-001-10', 'priority': 'P1', 'layer': 'integration_live', 'title': 'ffmpeg runtimeの実機能テスト', 'given': '`ffmpeg_connectivity_gate`が成功済み', 'when': '疎通成功後、2章の短いfixture MP3からM4Bを生成しchapter metadataをprobeする。', 'then': '最小の実機能結果を検証する。疎通fixtureなしでこのテストを単独実行できない。', 'test_file': '`tests/test_m4b_output.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/audio/m4b.py)")
+import hashlib
+import subprocess
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
+from typing import Any
 
-class M4BResult:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+from script.core.errors import AppError, ErrorCode
+from script.schemas.m4b_manifest import M4BManifest
+
 
 class RuntimeHealth:
-    """Typed data placeholder; fields are finalized during task implementation."""
+    """`M4BTool.check_runtime()`の戻り値。"""
+
     def __init__(self, **data: Any) -> None:
         self.data = dict(data)
+        self.data.setdefault("version", None)
+        self.data.setdefault("error", None)
+
     def __getattr__(self, name: str) -> Any:
         try:
             return self.data[name]
         except KeyError as exc:
             raise AttributeError(name) from exc
 
+
+class M4BResult:
+    """`M4BBuilder.build()`の戻り値。"""
+
+    def __init__(self, **data: Any) -> None:
+        self.data = dict(data)
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self.data[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+
+def _first_line(text: str | None) -> str | None:
+    if not text:
+        return None
+    lines = text.splitlines()
+    return lines[0].strip() if lines else None
+
+
 class M4BTool:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
+    """ffmpeg等の実行可能性を先に確認するadapter(疎通確認専用、副作用なし)。"""
+
+    def __init__(self, *, ffmpeg_cmd: str = "ffmpeg", runner: Callable[..., subprocess.CompletedProcess] | None = None) -> None:
+        self._ffmpeg_cmd = ffmpeg_cmd
+        self._runner = runner or subprocess.run
+
     def check_runtime(self) -> RuntimeHealth:
-        """ffmpeg等の実行可能性を先に確認する。
+        """`ffmpeg -version`を実行し、M4B対応build(chapter atomをサポート)であることを確認する。
 
         Public contract: ``M4BTool.check_runtime() -> RuntimeHealth``.
         """
-        _step4_unimplemented('M4BTool.check_runtime')
+        try:
+            completed = self._runner([self._ffmpeg_cmd, "-version"], capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return RuntimeHealth(available=False, error=str(exc))
+
+        if completed.returncode != 0:
+            return RuntimeHealth(available=False, error="ffmpeg -version returned a non-zero exit code")
+
+        return RuntimeHealth(available=True, version=_first_line(completed.stdout))
+
 
 class M4BBuilder:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def build(self, chapters: Any, metadata: Any, output: Any) -> M4BResult:
+    """承認済み章順とchapter metadataでM4Bを生成する(5.2, 5.3節)。"""
+
+    def __init__(self, *, ffmpeg_cmd: str = "ffmpeg", runner: Callable[..., subprocess.CompletedProcess] | None = None) -> None:
+        self._ffmpeg_cmd = ffmpeg_cmd
+        self._runner = runner or subprocess.run
+
+    def build(
+        self,
+        chapters: Sequence[Mapping[str, Any]],
+        metadata: Mapping[str, Any] | None,
+        output: Any,
+        *,
+        tested_players: Sequence[str] = (),
+    ) -> M4BResult:
         """承認済み章順とchapter metadataでM4Bを生成する。
 
         Public contract: ``M4BBuilder.build(chapters, metadata, output) -> M4BResult``.
         """
-        _step4_unimplemented('M4BBuilder.build')
+        if not chapters:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "chapters is required")
+        if metadata is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "metadata is required")
+        if not metadata.get("project_id"):
+            raise AppError(ErrorCode.VALIDATION_ERROR, "metadata.project_id is required")
+        if not output:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "output is required")
+
+        chapter_list = list(chapters)
+        chapter_ids = [chapter["chapter_id"] for chapter in chapter_list]
+        if len(set(chapter_ids)) != len(chapter_ids):
+            # 11節: chapter重複(順序衝突)はfail。
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"duplicate chapter_id detected: {chapter_ids}")
+
+        for chapter in chapter_list:
+            # 5.2節: 全章のverified script承認 ∧ 試聴音声承認 ∧ 音声検査failでないことを確認する。
+            if not chapter.get("script_approved") or not chapter.get("preview_approved"):
+                raise AppError(
+                    ErrorCode.PERMISSION_DENIED,
+                    f"chapter {chapter.get('chapter_id')!r} is not fully approved; M4B generation is blocked",
+                )
+            if not chapter.get("audio_validation_passed"):
+                raise AppError(
+                    ErrorCode.PERMISSION_DENIED,
+                    f"chapter {chapter.get('chapter_id')!r} failed audio validation; M4B generation is blocked",
+                )
+
+        ordered_chapters = sorted(chapter_list, key=lambda chapter: chapter["order"])
+        output_path = Path(output)
+
+        # 9節: 具体的なコマンドオプション・エンコード設定は環境・ffmpegバージョン依存のため固定しない。
+        # ここでは入力source_mp3_pathを章順で連結し、出力先を指定するという不変の骨子だけを示す。
+        command = [self._ffmpeg_cmd, "-y"]
+        for chapter in ordered_chapters:
+            command += ["-i", str(chapter["source_mp3_path"])]
+        command += ["-o", str(output_path)]
+
+        completed = self._runner(command, capture_output=True, text=True)
+        if completed.returncode != 0:
+            raise AppError(
+                ErrorCode.INTERNAL_ERROR,
+                "ffmpeg failed to produce M4B output",
+                technical_detail=(completed.stderr or "").strip() or None,
+            )
+
+        manifest = M4BManifest(
+            project_id=metadata["project_id"],
+            chapters=tuple(
+                {
+                    "chapter_id": chapter["chapter_id"],
+                    "order": chapter["order"],
+                    "title": chapter["title"],
+                    "start_time_offset_seconds": chapter["start_time_offset_seconds"],
+                    "duration_seconds": chapter["duration_seconds"],
+                }
+                for chapter in ordered_chapters
+            ),
+            source_chapter_mp3s=tuple(str(chapter["source_mp3_path"]) for chapter in ordered_chapters),
+            # 5.5節: 確認済みmetadataだけを使用し、不明値をAIで補完しない(Noneのまま保持する)。
+            metadata={
+                "title": metadata.get("title"),
+                "author": metadata.get("author"),
+                "narrator": metadata.get("narrator"),
+                "year": metadata.get("year"),
+            },
+            validation={
+                "all_chapters_passed": True,
+                # audio-validation-thresholds.mdがprovisionalのため、常にprovisionalとして記録する。
+                "validation_threshold_status": "provisional",
+            },
+            compatibility={
+                "status": "approved" if tested_players else "provisional",
+                "tested_players": tuple(tested_players),
+            },
+        )
+
+        content_hash = hashlib.sha256(output_path.read_bytes()).hexdigest() if output_path.exists() else None
+
+        return M4BResult(
+            output_path=str(output_path),
+            artifact_type="m4b",
+            content_hash=content_hash,
+            manifest=manifest,
+        )

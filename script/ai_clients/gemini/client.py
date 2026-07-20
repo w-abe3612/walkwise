@@ -297,69 +297,159 @@ def call_gemini(
 
 
 # ---------------------------------------------------------------------------
-# STEP4 typed contract additions. Existing working implementation above is
-# preserved. New public APIs remain intentionally unimplemented.
+# STEP4 typed contract additions (TASK-AI-001). Existing working
+# implementation above is preserved and reused (call_gemini's HTTP/retry
+# helpers). GeminiClient adapts that existing behavior to the common
+# AIClient contract in script/ai_clients/base.py.
 # ---------------------------------------------------------------------------
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Protocol
+from dataclasses import dataclass
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-AI-001', 'GeminiClient.check_connectivity() -> ConnectivityResult', '認証を含む軽量なmetadata/list操作で疎通確認する。'),
-    ('TASK-AI-001', 'GeminiClient.generate(request) -> AIResult', '現行HTTP処理を共通結果・errorへ適合する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-AI-001-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'mock生成', 'given': '固定Gemini HTTP response', 'when': 'generateする', 'then': 'AIResult text/provider/model/usageへ変換する', 'test_file': '`tests/test_ai_client_contract.py`'},
-    {'id': 'TC-AI-001-02', 'priority': 'P0', 'layer': 'unit', 'title': 'retry区分', 'given': '429/5xxと400を返すmock', 'when': 'generateする', 'then': '前者だけ上限内再試行し400は即時error', 'test_file': '`tests/test_gemini_client.py`'},
-    {'id': 'TC-AI-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'structured response', 'given': '不正JSONと正常JSON', 'when': 'validation hook付き生成', 'then': '正常だけ受理し不正はschema error', 'test_file': '`tests/test_ai_client_contract.py`'},
-    {'id': 'TC-AI-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'AIClient Protocol', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`AIClient Protocol: check_connectivity(), generate(request) -> AIResult`を通じて「AIClient Protocol」を実行する', 'then': '「AIClient Protocol」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_gemini_client.py`'},
-    {'id': 'TC-AI-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'prompt template', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`AIClient Protocol: check_connectivity(), generate(request) -> AIResult`を通じて「prompt template」を実行する', 'then': '「prompt template」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_ai_client_contract.py`'},
-    {'id': 'TC-AI-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'JSON/YAML response validation hook', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`AIClient Protocol: check_connectivity(), generate(request) -> AIResult`を通じて「JSON/YAML response validation hook」を実行する', 'then': '正常値を受理し、仕様違反を副作用前に検出して具体的なerror codeを返す。', 'test_file': '`tests/test_gemini_client.py`'},
-    {'id': 'TC-AI-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'timeout', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`AIClient Protocol: check_connectivity(), generate(request) -> AIResult`を通じて「timeout」を実行する', 'then': 'timeoutを安定した共通errorへ変換し、半端な最終ファイルや成功状態を残さない。', 'test_file': '`tests/test_ai_client_contract.py`'},
-    {'id': 'TC-AI-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`AIClient Protocol: check_connectivity(), generate(request) -> AIResult`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_gemini_client.py`'},
-    {'id': 'TC-AI-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`AIClient Protocol: check_connectivity(), generate(request) -> AIResult`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_ai_client_contract.py`'},
-    {'id': 'TC-AI-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_gemini_client.py`'},
-    {'id': 'TC-AI-001-11', 'priority': 'P0', 'layer': 'integration_smoke', 'title': 'Gemini APIの疎通確認', 'given': '実接続テストが明示的に有効化され、必要な設定が存在する', 'when': '認証付きの軽量なmodel metadata/list操作を1回だけ実行し、DNS/TLS/HTTP/認証/応答schemaを確認する。生成本文は要求しない。', 'then': 'ConnectivityResultを返す。失敗時は原因を秘密値なしで報告し、実機能テストを開始しない。', 'test_file': '`tests/test_ai_client_contract.py`'},
-    {'id': 'TC-AI-001-12', 'priority': 'P1', 'layer': 'integration_live', 'title': 'Gemini APIの実機能テスト', 'given': '`gemini_connectivity_gate`が成功済み', 'when': '疎通成功後、極短い固定promptを1回生成し、非空text・provider/model・usageまたはusage unavailable warningを確認する。', 'then': '最小の実機能結果を検証する。疎通fixtureなしでこのテストを単独実行できない。', 'test_file': '`tests/test_gemini_client.py`'},
-)
+from script.ai_clients.base import AIClientError, AIRequest, AIResult, AIUsage
+from script.core.errors import AppError, ErrorCode
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/ai_clients/gemini/client.py)")
+DEFAULT_CONNECTIVITY_TIMEOUT_SEC = 10
 
-class AIResult:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
 
+@dataclass(frozen=True)
 class ConnectivityResult:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """副作用のない疎通確認結果。"""
+
+    available: bool
+    provider: str = "gemini"
+    detail: str | None = None
+
 
 class GeminiClient:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
+    """現行のGemini HTTP処理(`call_gemini`と同じendpoint/retry方針)をAIClient契約へ適合する。"""
+
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        api_version: str | None = None,
+        model: str | None = None,
+        session_get: Any = None,
+        session_post: Any = None,
+        sleep: Any = None,
+    ) -> None:
+        self._api_key = api_key if api_key is not None else DEFAULT_API_KEY
+        self._api_version = api_version or DEFAULT_API_VERSION
+        self._model = model or DEFAULT_MODEL
+        self._get = session_get or requests.get
+        self._post = session_post or requests.post
+        self._sleep = sleep or time.sleep
+
     def check_connectivity(self) -> ConnectivityResult:
-        """認証を含む軽量なmetadata/list操作で疎通確認する。
+        """認証を含む軽量なmetadata操作(生成なし)で疎通確認する。"""
+        if not self._api_key:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "GEMINI_API_KEY is required")
 
-        Public contract: ``GeminiClient.check_connectivity() -> ConnectivityResult``.
-        """
-        _step4_unimplemented('GeminiClient.check_connectivity')
-    def generate(self, request: Any) -> AIResult:
-        """現行HTTP処理を共通結果・errorへ適合する。
+        url = f"https://generativelanguage.googleapis.com/{self._api_version}/models/{self._model}"
+        try:
+            response = self._get(
+                url,
+                headers={"x-goog-api-key": self._api_key},
+                timeout=DEFAULT_CONNECTIVITY_TIMEOUT_SEC,
+            )
+        except requests.RequestException as exc:
+            return ConnectivityResult(available=False, detail=str(exc))
 
-        Public contract: ``GeminiClient.generate(request) -> AIResult``.
-        """
-        _step4_unimplemented('GeminiClient.generate')
+        if response.status_code >= 400:
+            return ConnectivityResult(available=False, detail=_summarize_response_error(response))
+
+        return ConnectivityResult(available=True)
+
+    def generate(self, request: AIRequest) -> AIResult:
+        """現行HTTP処理(retry/timeout方針込み)を共通結果・errorへ適合する。"""
+        if request is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "request is required")
+        if not self._api_key:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "GEMINI_API_KEY is required")
+
+        model = request.model or self._model
+        timeout_sec = request.timeout_sec or DEFAULT_REQUEST_TIMEOUT_SEC
+
+        payload: dict[str, Any] = {
+            "system_instruction": {"parts": [{"text": request.system_instruction}]},
+            "contents": [{"parts": [{"text": request.user_text}]}],
+            "generationConfig": {"temperature": request.temperature},
+        }
+        if request.response_mime_type:
+            payload["generationConfig"]["responseMimeType"] = request.response_mime_type
+
+        headers = {"Content-Type": "application/json", "x-goog-api-key": self._api_key}
+        url = build_endpoint(self._api_version, model)
+
+        last_error: Exception | None = None
+        for attempt in range(1, DEFAULT_MAX_RETRIES + 1):
+            try:
+                response = self._post(url, headers=headers, json=payload, timeout=timeout_sec)
+            except requests.Timeout as exc:
+                # timeoutは安定errorへ変換して即座に停止し、半端な成功状態を残さない。
+                raise AIClientError(
+                    ErrorCode.EXTERNAL_UNAVAILABLE,
+                    "gemini request timed out",
+                    retryable=False,
+                    technical_detail=str(exc),
+                ) from exc
+            except requests.RequestException as exc:
+                last_error = exc
+                status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                should_retry = status_code is None or _is_retryable_status_code(int(status_code))
+                if attempt < DEFAULT_MAX_RETRIES and should_retry:
+                    self._sleep(
+                        _compute_retry_wait_sec(
+                            attempt=attempt,
+                            retry_wait_sec=DEFAULT_RETRY_WAIT_SEC,
+                            max_retry_wait_sec=DEFAULT_MAX_RETRY_WAIT_SEC,
+                            response=getattr(exc, "response", None),
+                        )
+                    )
+                    continue
+                raise AIClientError(
+                    ErrorCode.EXTERNAL_UNAVAILABLE,
+                    f"gemini request failed: {exc}",
+                    retryable=should_retry,
+                    technical_detail=str(exc),
+                ) from exc
+
+            if response.status_code >= 400:
+                error_message = _summarize_response_error(response)
+                if response.status_code != 400 and _is_retryable_status_code(response.status_code) and attempt < DEFAULT_MAX_RETRIES:
+                    self._sleep(
+                        _compute_retry_wait_sec(
+                            attempt=attempt,
+                            retry_wait_sec=DEFAULT_RETRY_WAIT_SEC,
+                            max_retry_wait_sec=DEFAULT_MAX_RETRY_WAIT_SEC,
+                            response=response,
+                        )
+                    )
+                    continue
+                # 400は即時error(retry区分: 429/5xxだけを再試行対象とする)。
+                raise AIClientError(
+                    ErrorCode.VALIDATION_ERROR if response.status_code == 400 else ErrorCode.EXTERNAL_UNAVAILABLE,
+                    error_message,
+                    retryable=_is_retryable_status_code(response.status_code) and response.status_code != 400,
+                )
+
+            data = response.json()
+            text = extract_text_from_candidate(data)
+
+            if request.validate_response is not None:
+                request.validate_response(text)
+
+            usage_data = data.get("usageMetadata") or {}
+            usage = AIUsage(
+                input_tokens=usage_data.get("promptTokenCount"),
+                output_tokens=usage_data.get("candidatesTokenCount"),
+                total_tokens=usage_data.get("totalTokenCount"),
+            )
+            warnings = () if usage_data else ("usage_unavailable",)
+
+            return AIResult(text=text, provider="gemini", model=model, usage=usage, warnings=warnings)
+
+        raise AIClientError(
+            ErrorCode.EXTERNAL_UNAVAILABLE,
+            f"gemini request failed after retries: {last_error}",
+            retryable=True,
+        )

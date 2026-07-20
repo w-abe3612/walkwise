@@ -1,62 +1,177 @@
-from __future__ import annotations
+"""script/source_processing/pdf/extract.py — 公開契約: PdfTextExtractor.extract, should_fallback_to_ocr.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/source_processing/pdf/extract.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-PDF-001
+Contract: docs/test-cases/TASK-PDF-001-pdf-direct-text-extraction.md
+Spec: docs/specifications/pdf-direct-text-extraction.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-PDF-001', 'PdfTextExtractor.extract(path: Path) -> PdfExtractionReport', '非保護PDFをページ順で抽出し入力を変更しない。'),
-    ('TASK-PDF-001', 'should_fallback_to_ocr(report) -> bool', '空・極少文字等を根拠にOCR候補を判定する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-PDF-001-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'password拒否', 'given': 'password protected PDF', 'when': 'extractする', 'then': '解除を試みずunsupported_password_protected_pdf', 'test_file': '`tests/test_pdf_direct_extraction.py`'},
-    {'id': 'TC-PDF-001-02', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'ページ順/locator', 'given': '3ページPDF', 'when': 'extractする', 'then': '1..3順でpage locatorを保持する', 'test_file': '`tests/test_pdf_extraction_fallback.py`'},
-    {'id': 'TC-PDF-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'OCR fallback', 'given': '空または極少文字pageを含むPDF', 'when': 'fallback判定', 'then': '該当pageだけOCR候補となる', 'test_file': '`tests/test_pdf_direct_extraction.py`'},
-    {'id': 'TC-PDF-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'PyMuPDF primary adapter', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`PdfPage/PdfExtractionReport`を通じて「PyMuPDF primary adapter」を実行する', 'then': '「PyMuPDF primary adapter」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_pdf_extraction_fallback.py`'},
-    {'id': 'TC-PDF-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'pypdf secondary adapter境界', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`PdfPage/PdfExtractionReport`を通じて「pypdf secondary adapter境界」を実行する', 'then': '「pypdf secondary adapter境界」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_pdf_direct_extraction.py`'},
-    {'id': 'TC-PDF-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'metadata', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`PdfPage/PdfExtractionReport`を通じて「metadata」を実行する', 'then': '「metadata」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_pdf_extraction_fallback.py`'},
-    {'id': 'TC-PDF-001-07', 'priority': 'P1', 'layer': 'unit', 'title': '空/極少文字ページflag', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`PdfPage/PdfExtractionReport`を通じて「空/極少文字ページflag」を実行する', 'then': '「空/極少文字ページflag」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_pdf_direct_extraction.py`'},
-    {'id': 'TC-PDF-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`PdfPage/PdfExtractionReport`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_pdf_extraction_fallback.py`'},
-    {'id': 'TC-PDF-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`PdfPage/PdfExtractionReport`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_pdf_direct_extraction.py`'},
-    {'id': 'TC-PDF-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_pdf_extraction_fallback.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/source_processing/pdf/extract.py)")
+from pathlib import Path
+from typing import Any
 
-class PdfExtractionReport:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+from script.core.errors import AppError, ErrorCode
+from script.source_processing.pdf.models import PdfExtractionReport, PdfPage, TextBlock
+
+_SUPPORTED_EXTRACTORS = frozenset({"pymupdf", "pypdf"})
+
+# pdf-direct-text-extraction.md 5.4節: 閾値はprovisional(代表PDFでの実測前の暫定値)。
+_MIN_PRINTABLE_CHAR_RATIO = 0.85
+_MAX_DUPLICATE_RATIO = 0.3
+_MIN_EXTRACTED_CHARS_PER_PAGE = 20
+
+
+def _quality_metrics(text: str) -> tuple[float, float]:
+    if not text:
+        return 0.0, 0.0
+
+    printable_count = sum(1 for char in text if char.isprintable() or char.isspace())
+    printable_ratio = printable_count / len(text)
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        duplicate_ratio = 0.0
+    else:
+        unique_lines = len(set(lines))
+        duplicate_ratio = (len(lines) - unique_lines) / len(lines)
+
+    return printable_ratio, duplicate_ratio
+
+
+def should_fallback_to_ocr(page: PdfPage) -> bool:
+    """空・極少文字等を根拠にOCR候補を判定する。"""
+    if page is None:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "page is required")
+
+    if len(page.text.strip()) < _MIN_EXTRACTED_CHARS_PER_PAGE:
+        return True
+    if page.printable_char_ratio < _MIN_PRINTABLE_CHAR_RATIO:
+        return True
+    if page.duplicate_ratio > _MAX_DUPLICATE_RATIO:
+        return True
+    return False
+
 
 class PdfTextExtractor:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
+    """非保護PDFをページ順で抽出し入力を変更しない。"""
+
+    def __init__(self, *, extractor: str = "pymupdf") -> None:
+        if extractor not in _SUPPORTED_EXTRACTORS:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"unknown extractor: {extractor!r}")
+        self._extractor = extractor
+
     def extract(self, path: Path) -> PdfExtractionReport:
-        """非保護PDFをページ順で抽出し入力を変更しない。
+        """非保護PDFをページ順で抽出し入力を変更しない。"""
+        if not path:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "path is required")
 
-        Public contract: ``PdfTextExtractor.extract(path: Path) -> PdfExtractionReport``.
-        """
-        _step4_unimplemented('PdfTextExtractor.extract')
+        path = Path(path)
+        if not path.is_file():
+            raise AppError(ErrorCode.NOT_FOUND, f"pdf file does not exist: {path}")
 
-def should_fallback_to_ocr(report: Any) -> bool:
-    """空・極少文字等を根拠にOCR候補を判定する。
+        original_bytes = path.read_bytes()
 
-    Public contract: ``should_fallback_to_ocr(report) -> bool``.
-    """
-    _step4_unimplemented('should_fallback_to_ocr')
+        if self._extractor == "pymupdf":
+            report = self._extract_with_pymupdf(path)
+        else:
+            report = self._extract_with_pypdf(path)
+
+        if path.read_bytes() != original_bytes:
+            raise AppError(ErrorCode.INTERNAL_ERROR, "pdf input must not be modified during extraction")
+
+        return report
+
+    def _extract_with_pymupdf(self, path: Path) -> PdfExtractionReport:
+        import fitz
+
+        try:
+            doc = fitz.open(path)
+        except Exception as exc:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"cannot open pdf: {path}", technical_detail=str(exc)) from exc
+
+        try:
+            # pdf-direct-text-extraction.md 5.6節: 提供有無を問わず検出時点でblockedとする。
+            if doc.needs_pass or doc.is_encrypted:
+                raise AppError(ErrorCode.VALIDATION_ERROR, "unsupported_password_protected_pdf")
+
+            metadata = {key: value for key, value in (doc.metadata or {}).items() if value}
+            pages: list[PdfPage] = []
+            for page_index in range(doc.page_count):
+                pdf_page = doc[page_index]
+                raw_blocks = pdf_page.get_text("blocks")
+                ordered_blocks = sorted(raw_blocks, key=lambda block: (round(block[1]), block[0]))
+
+                text_blocks: list[TextBlock] = []
+                text_parts: list[str] = []
+                for order, block in enumerate(ordered_blocks, start=1):
+                    x0, y0, x1, y1, text = block[0], block[1], block[2], block[3], block[4]
+                    text_parts.append(text)
+                    text_blocks.append(TextBlock(bbox=(x0, y0, x1, y1), reading_order=order))
+
+                page_text = "".join(text_parts)
+                printable_ratio, duplicate_ratio = _quality_metrics(page_text)
+                pages.append(
+                    PdfPage(
+                        page_number=page_index + 1,
+                        text=page_text,
+                        blocks=tuple(text_blocks),
+                        printable_char_ratio=printable_ratio,
+                        duplicate_ratio=duplicate_ratio,
+                        extraction_method="direct_text",
+                        extractor="pymupdf",
+                    )
+                )
+
+            return PdfExtractionReport(
+                source_path=str(path),
+                page_count=doc.page_count,
+                pages=tuple(pages),
+                metadata=metadata,
+                extractor="pymupdf",
+            )
+        finally:
+            doc.close()
+
+    def _extract_with_pypdf(self, path: Path) -> PdfExtractionReport:
+        import pypdf
+
+        try:
+            reader = pypdf.PdfReader(path)
+        except pypdf.errors.DependencyError as exc:
+            # pypdfは暗号化PDFのmetadata検査自体に復号backend(cryptography)を要求する。
+            # 復号は一切試みない方針のため、backend欠如も含めて即座にblockedとする。
+            raise AppError(ErrorCode.VALIDATION_ERROR, "unsupported_password_protected_pdf") from exc
+        except Exception as exc:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"cannot open pdf: {path}", technical_detail=str(exc)) from exc
+
+        # pdf-direct-text-extraction.md 5.6節: 提供有無を問わず検出時点でblockedとする。
+        if reader.is_encrypted:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "unsupported_password_protected_pdf")
+
+        raw_metadata = reader.metadata or {}
+        metadata: dict[str, Any] = {
+            str(key).lstrip("/"): str(value) for key, value in raw_metadata.items() if value
+        }
+
+        pages: list[PdfPage] = []
+        for page_index, pdf_page in enumerate(reader.pages):
+            page_text = pdf_page.extract_text() or ""
+            printable_ratio, duplicate_ratio = _quality_metrics(page_text)
+            pages.append(
+                PdfPage(
+                    page_number=page_index + 1,
+                    text=page_text,
+                    blocks=(),
+                    printable_char_ratio=printable_ratio,
+                    duplicate_ratio=duplicate_ratio,
+                    extraction_method="direct_text",
+                    extractor="pypdf",
+                )
+            )
+
+        return PdfExtractionReport(
+            source_path=str(path),
+            page_count=len(reader.pages),
+            pages=tuple(pages),
+            metadata=metadata,
+            extractor="pypdf",
+        )

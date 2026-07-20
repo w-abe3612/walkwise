@@ -1,132 +1,159 @@
-"""STEP3 test scaffold for TASK-VOICEVOX-001: VOICEVOX adapter・話者一覧・合成.
+"""STEP4 test implementation for TASK-VOICEVOX-001: VoicevoxHttpClient.
 
 Contract: docs/test-cases/TASK-VOICEVOX-001-voicevox-client-adapter.md
 Release scope: MVP
-Planned production files:
-- script/tts_clients/voicevox/client.py
-- script/tts_clients/voicevox/adapter.py
-
-This file is the test-generation source of truth for the cases below.
-STEP3 intentionally imports no production module because STEP4 source
-scaffolds do not exist yet. Claude Code must replace each explicit
-failure with assertions without changing case IDs or contract meaning."""
+"""
 
 from __future__ import annotations
 
+import io
+import wave
+
 import pytest
+import requests
+
+from script.tts_clients.base import TTSClientError, TTSErrorCode
+from script.tts_clients.voicevox.client import VoicevoxHttpClient
 
 pytestmark = pytest.mark.mvp
 
+
+def _make_wav_bytes(*, framerate: int = 24000, nchannels: int = 1, sampwidth: int = 2, nframes: int = 100) -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(nchannels)
+        wav_file.setsampwidth(sampwidth)
+        wav_file.setframerate(framerate)
+        wav_file.writeframes(b"\x00" * (nframes * sampwidth * nchannels))
+    return buffer.getvalue()
+
+
+class _FakeResponse:
+    def __init__(self, *, status_code: int = 200, json_data: object = None, content: bytes = b"", headers: dict | None = None) -> None:
+        self.status_code = status_code
+        self._json_data = json_data
+        self.content = content
+        self.headers = headers or {}
+
+    def json(self) -> object:
+        if self._json_data is None:
+            raise ValueError("response body is not valid JSON")
+        return self._json_data
+
+
+_SPEAKERS_RESPONSE = [
+    {"speaker_uuid": "uuid-1", "name": "春日部つむぎ", "styles": [{"id": 8, "name": "ノーマル"}]},
+    {
+        "speaker_uuid": "uuid-2",
+        "name": "四国めたん",
+        "styles": [{"id": 2, "name": "ノーマル"}, {"id": 0, "name": "あまあま"}],
+    },
+]
+
+
 @pytest.mark.integration_mock
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-VOICEVOX-001-01 is not implemented")
 def test_tc_voicevox_001_01() -> None:
-    """TC-VOICEVOX-001-01 — speaker変換
-    
-    Contract: docs/test-cases/TASK-VOICEVOX-001-voicevox-client-adapter.md
-    Priority: P0
-    Layer: integration_mock
-    Given: mock /speakers response
-    When: list_speakers
-    Then: UUID/name/style IDを保持し表示名分岐しない
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-VOICEVOX-001-01")
+    """TC-VOICEVOX-001-01 — speaker変換: UUID/name/style IDを保持し表示名分岐しない。"""
+
+    def fake_get(url: str, timeout: object = None) -> _FakeResponse:
+        assert url.endswith("/speakers")
+        return _FakeResponse(json_data=_SPEAKERS_RESPONSE)
+
+    client = VoicevoxHttpClient(session_get=fake_get)
+
+    speakers = client.list_speakers()
+
+    speaker_ids = {speaker.speaker_id for speaker in speakers}
+    assert speaker_ids == {"8", "2", "0"}
+    assert all(speaker.engine == "voicevox" for speaker in speakers)
+    # 表示名で分岐しない: 同じ話者名でも異なるstyle_idごとに別レコードとして保持する。
+    assert len(speakers) == len(speaker_ids)
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-VOICEVOX-001-03 is not implemented")
 def test_tc_voicevox_001_03() -> None:
-    """TC-VOICEVOX-001-03 — format不一致
-    
-    Contract: docs/test-cases/TASK-VOICEVOX-001-voicevox-client-adapter.md
-    Priority: P0
-    Layer: unit
-    Given: 異なるsample rateの2WAV
-    When: merge
-    Then: audio_format_mismatch
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-VOICEVOX-001-03")
+    """TC-VOICEVOX-001-03 — format不一致: 異なるsample rateの2WAVをmergeするとaudio_format_mismatch。"""
+    client = VoicevoxHttpClient()
+    wav_a = _make_wav_bytes(framerate=24000)
+    wav_b = _make_wav_bytes(framerate=48000)
+
+    with pytest.raises(TTSClientError) as excinfo:
+        client.merge_waves([wav_a, wav_b])
+
+    assert excinfo.value.code is TTSErrorCode.AUDIO_FORMAT_MISMATCH
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-VOICEVOX-001-05 is not implemented")
 def test_tc_voicevox_001_05() -> None:
-    """TC-VOICEVOX-001-05 — /audio_query
-    
-    Contract: docs/test-cases/TASK-VOICEVOX-001-voicevox-client-adapter.md
-    Priority: P1
-    Layer: unit
-    Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-    When: `VoicevoxHttpClient.check_connectivity() -> ConnectivityResult`を通じて「/audio_query」を実行する
-    Then: 有効なmedia header・形式・順序を確認し、破損または形式不一致を成功扱いにしない。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-VOICEVOX-001-05")
+    """TC-VOICEVOX-001-05 — /audio_query: 破損・形式不一致の応答を成功扱いにしない。"""
+
+    def fake_post_invalid_json(url: str, **kwargs: object) -> _FakeResponse:
+        return _FakeResponse(status_code=200, content=b"not json")
+
+    with pytest.raises(TTSClientError) as excinfo_invalid_json:
+        VoicevoxHttpClient(session_post=fake_post_invalid_json).create_audio_query(text="hello", speaker_id=1)
+    assert excinfo_invalid_json.value.code is TTSErrorCode.QUERY_FAILED
+
+    def fake_post_non_object(url: str, **kwargs: object) -> _FakeResponse:
+        return _FakeResponse(status_code=200, json_data=["not", "an", "object"])
+
+    with pytest.raises(TTSClientError) as excinfo_non_object:
+        VoicevoxHttpClient(session_post=fake_post_non_object).create_audio_query(text="hello", speaker_id=1)
+    assert excinfo_non_object.value.code is TTSErrorCode.QUERY_FAILED
+
+    with pytest.raises(TTSClientError) as excinfo_empty_text:
+        VoicevoxHttpClient().create_audio_query(text="   ", speaker_id=1)
+    assert excinfo_empty_text.value.code is TTSErrorCode.TEXT_EMPTY
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-VOICEVOX-001-07 is not implemented")
 def test_tc_voicevox_001_07() -> None:
-    """TC-VOICEVOX-001-07 — timeout/error変換
-    
-    Contract: docs/test-cases/TASK-VOICEVOX-001-voicevox-client-adapter.md
-    Priority: P1
-    Layer: unit
-    Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-    When: `VoicevoxHttpClient.check_connectivity() -> ConnectivityResult`を通じて「timeout/error変換」を実行する
-    Then: timeoutを安定した共通errorへ変換し、半端な最終ファイルや成功状態を残さない。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-VOICEVOX-001-07")
+    """TC-VOICEVOX-001-07 — timeout/error変換: timeoutを安定した共通errorへ変換し、半端な状態を残さない。"""
+
+    def fake_get_timeout(url: str, timeout: object = None) -> _FakeResponse:
+        raise requests.Timeout("read timed out after 10s")
+
+    client = VoicevoxHttpClient(session_get=fake_get_timeout)
+
+    with pytest.raises(TTSClientError) as excinfo:
+        client.list_speakers()
+    assert excinfo.value.code is TTSErrorCode.TIMEOUT
+
+    # check_connectivity()はtimeoutを例外にせず、失敗を示すConnectivityResultへ変換する。
+    result = client.check_connectivity()
+    assert result.available is False
+    assert "timeout" in result.detail.lower()
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-VOICEVOX-001-09 is not implemented")
 def test_tc_voicevox_001_09() -> None:
-    """TC-VOICEVOX-001-09 — 再実行時の決定性
-    
-    Contract: docs/test-cases/TASK-VOICEVOX-001-voicevox-client-adapter.md
-    Priority: P1
-    Layer: unit
-    Given: 同じ入力、同じ設定、同じ依存応答
-    When: `VoicevoxHttpClient.check_connectivity() -> ConnectivityResult`を2回実行する
-    Then: 仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-VOICEVOX-001-09")
+    """TC-VOICEVOX-001-09 — 再実行時の決定性: 同じ入力なら同じ論理結果を返す。"""
+    calls: list[str] = []
+
+    def fake_get(url: str, timeout: object = None) -> _FakeResponse:
+        calls.append(url)
+        return _FakeResponse(json_data=_SPEAKERS_RESPONSE)
+
+    client = VoicevoxHttpClient(session_get=fake_get)
+
+    result_1 = client.check_connectivity()
+    result_2 = client.check_connectivity()
+
+    assert result_1 == result_2
+    assert len(calls) == 2
+
 
 @pytest.mark.integration_smoke
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-VOICEVOX-001-11 is not implemented")
-def test_tc_voicevox_001_11() -> None:
+def test_tc_voicevox_001_11(voicevox_connectivity_gate) -> None:
     """TC-VOICEVOX-001-11 — VOICEVOX Engine APIの疎通確認
-    
+
     Contract: docs/test-cases/TASK-VOICEVOX-001-voicevox-client-adapter.md
     Priority: P0
     Layer: integration_smoke
     Given: 実接続テストが明示的に有効化され、必要な設定が存在する
     When: `GET /speakers`を1回実行し、HTTP成功、1件以上のspeaker、UUID・style IDを含むJSON配列を確認する。
     Then: ConnectivityResultを返す。失敗時は原因を秘密値なしで報告し、実機能テストを開始しない。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-VOICEVOX-001-11")
+    """
+    assert voicevox_connectivity_gate.available is True
+    assert voicevox_connectivity_gate.speaker_count is not None
+    assert voicevox_connectivity_gate.speaker_count >= 1

@@ -1,60 +1,187 @@
-from __future__ import annotations
+"""script/source_processing/images/preprocess.py — 公開契約: ImagePreprocessor.process, split_spread.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/source_processing/images/preprocess.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-IMAGE-002
+Contract: docs/test-cases/TASK-IMAGE-002-image-preprocessing-and-quality-review.md
+Spec: docs/specifications/image-material-ingestion.md, docs/specifications/source-preprocessing.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-IMAGE-002', 'ImagePreprocessor.process(page, options) -> PreprocessedPage', '原画像を変えずOCR用PNGと変換manifestを生成する。'),
-    ('TASK-IMAGE-002', 'split_spread(page) -> tuple[PreprocessedPage, PreprocessedPage]', '左右locatorを保持して見開きを分割する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-IMAGE-002-01', 'priority': 'P0', 'layer': 'unit', 'title': '原画像不変', 'given': '回転・contrast処理対象', 'when': 'preprocessする', 'then': '原画像hash不変で派生PNGとparametersを保存', 'test_file': '`tests/test_image_preprocessing.py`'},
-    {'id': 'TC-IMAGE-002-02', 'priority': 'P0', 'layer': 'unit', 'title': 'blank候補', 'given': 'ほぼ白紙の画像', 'when': 'quality評価する', 'then': '削除せずblank_candidate warningにする', 'test_file': '`tests/test_image_quality_flags.py`'},
-    {'id': 'TC-IMAGE-002-03', 'priority': 'P0', 'layer': 'unit', 'title': '見開きlocator', 'given': '見開き画像', 'when': 'splitする', 'then': '左右の元page座標対応を保持する', 'test_file': '`tests/test_image_preprocessing.py`'},
-    {'id': 'TC-IMAGE-002-04', 'priority': 'P1', 'layer': 'unit', 'title': '決定的な低リスク補正', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImagePreprocessor.process(page, options) -> PreprocessedPage`を通じて「決定的な低リスク補正」を実行する', 'then': '「決定的な低リスク補正」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_image_quality_flags.py`'},
-    {'id': 'TC-IMAGE-002-05', 'priority': 'P1', 'layer': 'unit', 'title': 'before/after hash', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImagePreprocessor.process(page, options) -> PreprocessedPage`を通じて「before/after hash」を実行する', 'then': '同一の正規化入力から同一SHA-256を返し、内容差分があればhashが変化する。', 'test_file': '`tests/test_image_preprocessing.py`'},
-    {'id': 'TC-IMAGE-002-06', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`ImagePreprocessor.process(page, options) -> PreprocessedPage`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_image_quality_flags.py`'},
-    {'id': 'TC-IMAGE-002-07', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`ImagePreprocessor.process(page, options) -> PreprocessedPage`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_image_preprocessing.py`'},
-    {'id': 'TC-IMAGE-002-08', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_image_quality_flags.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/source_processing/images/preprocess.py)")
+import hashlib
+import io
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
+from PIL import Image, ImageEnhance
+
+from script.core.errors import AppError, ErrorCode
+from script.source_processing.images.manifest import Locator, PageEntry
+
+
+@dataclass(frozen=True)
+class PreprocessOptions:
+    """低リスク・決定的な補正parameter(image-material-ingestion.md 10節)。"""
+
+    rotate_degrees: float = 0.0
+    contrast_factor: float = 1.0
+
+
+@dataclass(frozen=True)
 class PreprocessedPage:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """派生PNGと再処理可能なparameter manifestを保持する。"""
+
+    page_index: int
+    image_id: str
+    original_path: str
+    original_hash: str
+    derivative_path: str
+    derivative_hash: str
+    parameters: dict[str, Any] = field(default_factory=dict)
+    locator: Locator | None = None
+
+    def __post_init__(self) -> None:
+        if not self.image_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "image_id is required")
+        if not self.original_path or not self.original_hash:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "original_path and original_hash are required")
+        if not self.derivative_path or not self.derivative_hash:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "derivative_path and derivative_hash are required")
+
+
+def _write_derivative_idempotent(destination: Path, data: bytes) -> str:
+    """destinationへ書込む。同一内容の再実行は冪等成功、異なる内容の上書きは拒否する。"""
+    new_hash = hashlib.sha256(data).hexdigest()
+    if destination.exists():
+        existing_hash = hashlib.sha256(destination.read_bytes()).hexdigest()
+        if existing_hash != new_hash:
+            raise AppError(
+                ErrorCode.CONFLICT,
+                f"cannot overwrite existing derivative with different content: {destination}",
+            )
+        return existing_hash
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(data)
+    return new_hash
+
 
 class ImagePreprocessor:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def process(self, page: Any, options: Any) -> PreprocessedPage:
-        """原画像を変えずOCR用PNGと変換manifestを生成する。
+    """原画像を変えず、OCR向け派生PNGと再処理可能なparameter manifestを生成する。"""
 
-        Public contract: ``ImagePreprocessor.process(page, options) -> PreprocessedPage``.
-        """
-        _step4_unimplemented('ImagePreprocessor.process')
+    def __init__(self, destination_dir: Path) -> None:
+        if not destination_dir:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "destination_dir is required")
+        self._destination_dir = Path(destination_dir)
 
-def split_spread(page: Any) -> tuple[PreprocessedPage, PreprocessedPage]:
-    """左右locatorを保持して見開きを分割する。
+    def process(self, page: PageEntry, options: PreprocessOptions) -> PreprocessedPage:
+        """原画像を変えずOCR用PNGと変換manifestを生成する。"""
+        if page is None or not page.original_path or not page.image_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "page (with original_path and image_id) is required")
+        if options is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "options is required")
 
-    Public contract: ``split_spread(page) -> tuple[PreprocessedPage, PreprocessedPage]``.
-    """
-    _step4_unimplemented('split_spread')
+        original_path = Path(page.original_path)
+        if not original_path.is_file():
+            raise AppError(ErrorCode.NOT_FOUND, f"original image does not exist: {original_path}")
+
+        original_bytes_before = original_path.read_bytes()
+        original_hash = hashlib.sha256(original_bytes_before).hexdigest()
+
+        with Image.open(original_path) as image:
+            working = image.convert("RGB")
+            if options.rotate_degrees:
+                working = working.rotate(-options.rotate_degrees, expand=True, fillcolor="white")
+            if options.contrast_factor != 1.0:
+                working = ImageEnhance.Contrast(working).enhance(options.contrast_factor)
+
+            buffer = io.BytesIO()
+            working.save(buffer, format="PNG")
+            derivative_bytes = buffer.getvalue()
+
+        destination = self._destination_dir / f"{page.image_id}.png"
+        derivative_hash = _write_derivative_idempotent(destination, derivative_bytes)
+
+        # 原画像不変性の確認(image-material-ingestion.md 10節: 原画像を自動補正画像で置き換えない)。
+        if original_path.read_bytes() != original_bytes_before:
+            raise AppError(ErrorCode.INTERNAL_ERROR, "original image must not be modified during preprocessing")
+
+        parameters = {
+            "rotate_degrees": options.rotate_degrees,
+            "contrast_factor": options.contrast_factor,
+        }
+
+        return PreprocessedPage(
+            page_index=page.page_index,
+            image_id=page.image_id,
+            original_path=str(original_path),
+            original_hash=original_hash,
+            derivative_path=str(destination),
+            derivative_hash=derivative_hash,
+            parameters=parameters,
+            locator=page.locator,
+        )
+
+
+def split_spread(page: PreprocessedPage) -> tuple[PreprocessedPage, PreprocessedPage]:
+    """左右locatorを保持して見開きを分割する(既存派生PNGを元に左右2枚を生成する)。"""
+    if page is None or not page.derivative_path or not page.image_id:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "page (with derivative_path and image_id) is required")
+
+    derivative_path = Path(page.derivative_path)
+    if not derivative_path.is_file():
+        raise AppError(ErrorCode.NOT_FOUND, f"derivative image does not exist: {derivative_path}")
+
+    with Image.open(derivative_path) as image:
+        width, height = image.size
+        half_width = width // 2
+        left_crop = image.crop((0, 0, half_width, height)).convert("RGB")
+        right_crop = image.crop((half_width, 0, width, height)).convert("RGB")
+
+        left_buffer = io.BytesIO()
+        left_crop.save(left_buffer, format="PNG")
+        right_buffer = io.BytesIO()
+        right_crop.save(right_buffer, format="PNG")
+
+    left_path = derivative_path.with_name(f"{derivative_path.stem}-left{derivative_path.suffix}")
+    right_path = derivative_path.with_name(f"{derivative_path.stem}-right{derivative_path.suffix}")
+
+    left_hash = _write_derivative_idempotent(left_path, left_buffer.getvalue())
+    right_hash = _write_derivative_idempotent(right_path, right_buffer.getvalue())
+
+    left_locator = Locator(
+        original_image_id=page.image_id,
+        crop_x=0,
+        crop_y=0,
+        crop_width=half_width,
+        crop_height=height,
+        spread_side="left",
+    )
+    right_locator = Locator(
+        original_image_id=page.image_id,
+        crop_x=half_width,
+        crop_y=0,
+        crop_width=width - half_width,
+        crop_height=height,
+        spread_side="right",
+    )
+
+    left_page = PreprocessedPage(
+        page_index=page.page_index,
+        image_id=f"{page.image_id}-left",
+        original_path=page.original_path,
+        original_hash=page.original_hash,
+        derivative_path=str(left_path),
+        derivative_hash=left_hash,
+        parameters={**page.parameters, "split_from": page.image_id, "spread_side": "left"},
+        locator=left_locator,
+    )
+    right_page = PreprocessedPage(
+        page_index=page.page_index,
+        image_id=f"{page.image_id}-right",
+        original_path=page.original_path,
+        original_hash=page.original_hash,
+        derivative_path=str(right_path),
+        derivative_hash=right_hash,
+        parameters={**page.parameters, "split_from": page.image_id, "spread_side": "right"},
+        locator=right_locator,
+    )
+    return (left_page, right_page)

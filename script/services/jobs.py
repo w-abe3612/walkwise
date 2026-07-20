@@ -1,80 +1,169 @@
-from __future__ import annotations
+"""script/services/jobs.py — 公開契約: JobService.enqueue/start_next/request_cancel/retry/recover_stale.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/services/jobs.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-JOB-001
+Contract: docs/test-cases/TASK-JOB-001-job-lifecycle-queue-and-recovery.md
+Spec: docs/specifications/22-job-lifecycle-and-recovery.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-JOB-001', 'JobService.enqueue(...) -> Job', 'approval gate確認後FIFO末尾へqueued Jobを追加する。'),
-    ('TASK-JOB-001', 'JobService.start_next() -> Job', 'None`'),
-    ('TASK-JOB-001', 'JobService.request_cancel/retry/recover_stale', '取消、親参照付き再試行、起動時stale失敗化を行う。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-JOB-001-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'FIFO', 'given': 'queued Jobが3件', 'when': 'start_nextを繰り返す', 'then': 'created/enqueued順で1件ずつrunningになる', 'test_file': '`tests/test_job_lifecycle.py`'},
-    {'id': 'TC-JOB-001-02', 'priority': 'P0', 'layer': 'unit', 'title': '不正遷移', 'given': 'cancelled Job', 'when': 'runningへ遷移', 'then': '拒否し状態を維持する', 'test_file': '`tests/test_job_queue.py`'},
-    {'id': 'TC-JOB-001-03', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'stale復旧', 'given': '起動前からrunningのJob', 'when': 'recover_staleする', 'then': 'failedと異常終了messageへ更新する', 'test_file': '`tests/test_stale_job_recovery.py`'},
-    {'id': 'TC-JOB-001-04', 'priority': 'P1', 'layer': 'unit', 'title': '状態遷移表', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`can_transition(current: JobStatus, target: JobStatus) -> bool`を通じて「状態遷移表」を実行する', 'then': '承認済み状態遷移表にある遷移だけが成功し、不正遷移では永続状態を変更しない。', 'test_file': '`tests/test_job_lifecycle.py`'},
-    {'id': 'TC-JOB-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'parent_job_id再試行', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`can_transition(current: JobStatus, target: JobStatus) -> bool`を通じて「parent_job_id再試行」を実行する', 'then': '再試行可能errorだけを上限回数内で再試行し、同一requestの成果物を重複登録しない。', 'test_file': '`tests/test_job_queue.py`'},
-    {'id': 'TC-JOB-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'approval gate hook', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`can_transition(current: JobStatus, target: JobStatus) -> bool`を通じて「approval gate hook」を実行する', 'then': '必要な承認が揃う場合だけ後工程へ進み、未承認・invalidated・changes_requestedでは安定errorで停止する。', 'test_file': '`tests/test_stale_job_recovery.py`'},
-    {'id': 'TC-JOB-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'finished_at規則', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`can_transition(current: JobStatus, target: JobStatus) -> bool`を通じて「finished_at規則」を実行する', 'then': '「finished_at規則」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_job_lifecycle.py`'},
-    {'id': 'TC-JOB-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`can_transition(current: JobStatus, target: JobStatus) -> bool`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_job_queue.py`'},
-    {'id': 'TC-JOB-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`can_transition(current: JobStatus, target: JobStatus) -> bool`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_stale_job_recovery.py`'},
-    {'id': 'TC-JOB-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_job_lifecycle.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/services/jobs.py)")
+import dataclasses
+import sqlite3
+from collections.abc import Callable
+from datetime import datetime, timezone
 
-class Job:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+from script.core.errors import AppError, ErrorCode
+from script.domain.enums import JobStatus
+from script.domain.job_state import can_transition
+from script.domain.models import Job
+from script.persistence.repositories import JobRepository
+
+_MAX_RETRIES = 3
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
 
 class JobService:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def enqueue(self, *args: Any, **kwargs: Any) -> Job:
-        """approval gate確認後FIFO末尾へqueued Jobを追加する。
+    """同時実行1件のFIFO queue、状態遷移、cancel要求、再試行、stale復旧を提供する。"""
 
-        Public contract: ``JobService.enqueue(...) -> Job``.
-        """
-        _step4_unimplemented('JobService.enqueue')
-    def start_next(self) -> Job:
-        """None`
+    def __init__(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        approval_gate_check: Callable[[str], bool] | None = None,
+    ) -> None:
+        if connection is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "connection is required")
+        self._connection = connection
+        self._approval_gate_check = approval_gate_check or (lambda build_request_id: True)
 
-        Public contract: ``JobService.start_next() -> Job``.
-        """
-        _step4_unimplemented('JobService.start_next')
-    def request_cancel(self) -> Any:
-        """取消、親参照付き再試行、起動時stale失敗化を行う。
+    def enqueue(self, job_id: str, build_request_id: str, job_type: str) -> Job:
+        """approval gate確認後FIFO末尾へqueued Jobを追加する。"""
+        if not job_id or not build_request_id or not job_type:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "job_id, build_request_id and job_type are required")
 
-        Public contract: ``JobService.request_cancel/retry/recover_stale``.
-        """
-        _step4_unimplemented('JobService.request_cancel')
-    def retry(self) -> Any:
-        """取消、親参照付き再試行、起動時stale失敗化を行う。
+        if not self._approval_gate_check(build_request_id):
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                "approval_gate_not_satisfied",
+                technical_detail=f"build_request_id={build_request_id}",
+            )
 
-        Public contract: ``JobService.request_cancel/retry/recover_stale``.
-        """
-        _step4_unimplemented('JobService.retry')
-    def recover_stale(self) -> Any:
-        """取消、親参照付き再試行、起動時stale失敗化を行う。
+        job = Job(job_id=job_id, build_request_id=build_request_id, job_type=job_type, status=JobStatus.QUEUED)
+        JobRepository(self._connection).insert(job)
+        self._connection.commit()
+        return job
 
-        Public contract: ``JobService.request_cancel/retry/recover_stale``.
-        """
-        _step4_unimplemented('JobService.recover_stale')
+    def start_next(self) -> Job | None:
+        """runningがない場合だけ最古queuedをrunningへする。"""
+        running_exists = self._connection.execute(
+            "SELECT 1 FROM jobs WHERE status = ? LIMIT 1", (JobStatus.RUNNING.value,)
+        ).fetchone()
+        if running_exists is not None:
+            return None
+
+        row = self._connection.execute(
+            "SELECT * FROM jobs WHERE status = ? ORDER BY rowid LIMIT 1", (JobStatus.QUEUED.value,)
+        ).fetchone()
+        if row is None:
+            return None
+
+        repository = JobRepository(self._connection)
+        job = repository._to_model(row)
+        updated = dataclasses.replace(job, status=JobStatus.RUNNING, started_at=_now_iso())
+        repository.update(updated)
+        self._connection.commit()
+        return updated
+
+    def _transition(self, job_id: str, target: JobStatus, *, message: str | None = None) -> Job:
+        if not job_id or target is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "job_id and target are required")
+
+        repository = JobRepository(self._connection)
+        current = repository.find(job_id)
+        if current is None:
+            raise AppError(ErrorCode.NOT_FOUND, f"job not found: {job_id}")
+
+        if not can_transition(current.status, target):
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                f"illegal job status transition: {current.status.value} -> {target.value}",
+            )
+
+        is_terminal = target in (JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED)
+        updated = dataclasses.replace(
+            current,
+            status=target,
+            last_message=message if message is not None else current.last_message,
+            finished_at=_now_iso() if is_terminal else current.finished_at,
+        )
+        repository.update(updated)
+        self._connection.commit()
+        return updated
+
+    def request_cancel(self, job_id: str) -> Job:
+        """取消要求を行う(実プロセス終了確認は対象外)。"""
+        return self._transition(job_id, JobStatus.CANCEL_REQUESTED)
+
+    def retry(self, job_id: str, *, new_job_id: str) -> Job:
+        """親参照付き再試行を、上限回数内でのみ許可する。"""
+        if not job_id or not new_job_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "job_id and new_job_id are required")
+
+        repository = JobRepository(self._connection)
+        original = repository.find(job_id)
+        if original is None:
+            raise AppError(ErrorCode.NOT_FOUND, f"job not found: {job_id}")
+        if original.status is not JobStatus.FAILED:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "only failed jobs can be retried")
+
+        depth = 0
+        current = original
+        while current.parent_job_id:
+            depth += 1
+            if depth >= _MAX_RETRIES:
+                raise AppError(
+                    ErrorCode.VALIDATION_ERROR,
+                    f"retry limit ({_MAX_RETRIES}) exceeded for job chain starting at {job_id}",
+                )
+            current = repository.find(current.parent_job_id)
+            if current is None:
+                break
+
+        new_job = Job(
+            job_id=new_job_id,
+            build_request_id=original.build_request_id,
+            job_type=original.job_type,
+            status=JobStatus.QUEUED,
+            parent_job_id=original.job_id,
+        )
+        repository.insert(new_job)
+        self._connection.commit()
+        return new_job
+
+    def recover_stale(self, is_process_alive: Callable[[str], bool] | None = None) -> list[Job]:
+        """起動時、runningのまま残ったJobのうち実プロセスがないものをfailedにする。"""
+        is_process_alive = is_process_alive or (lambda job_id: False)
+
+        repository = JobRepository(self._connection)
+        rows = self._connection.execute(
+            "SELECT * FROM jobs WHERE status = ?", (JobStatus.RUNNING.value,)
+        ).fetchall()
+
+        recovered: list[Job] = []
+        for row in rows:
+            job = repository._to_model(row)
+            if is_process_alive(job.job_id):
+                continue
+            updated = dataclasses.replace(
+                job,
+                status=JobStatus.FAILED,
+                last_message="stale_job_detected_on_startup",
+                finished_at=_now_iso(),
+            )
+            repository.update(updated)
+            recovered.append(updated)
+
+        self._connection.commit()
+        return recovered

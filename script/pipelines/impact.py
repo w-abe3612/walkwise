@@ -1,54 +1,156 @@
-from __future__ import annotations
+"""script/pipelines/impact.py — 公開契約: ImpactAnalyzer.analyze(change, graph) -> ImpactSet.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/pipelines/impact.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-PIPELINE-001
+Contract: docs/test-cases/TASK-PIPELINE-001-dependency-impact-and-partial-regeneration.md
+Spec: docs/specifications/02-process-input-output.md(14節: 再利用と部分再生成)
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-PIPELINE-001', 'ImpactAnalyzer.analyze(change, graph) -> ImpactSet', '変更種別から再処理対象を決定する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-PIPELINE-001-01', 'priority': 'P0', 'layer': 'unit', 'title': 'tts_text変更', 'given': '1segmentのtts_textだけ変更', 'when': 'impact分析', 'then': '対象segment audioと章MP3/manifestだけ対象', 'test_file': '`tests/test_impact_analysis.py`'},
-    {'id': 'TC-PIPELINE-001-02', 'priority': 'P0', 'layer': 'unit', 'title': 'voice profile変更', 'given': 'profile revision変更', 'when': 'plan', 'then': '影響する音声だけ対象で原稿は対象外', 'test_file': '`tests/test_regeneration_plan.py`'},
-    {'id': 'TC-PIPELINE-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'MP3 tag変更', 'given': 'tagのみ変更', 'when': 'plan', 'then': 'MP3 packagingだけ対象', 'test_file': '`tests/test_impact_analysis.py`'},
-    {'id': 'TC-PIPELINE-001-04', 'priority': 'P1', 'layer': 'unit', 'title': '依存graph', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImpactAnalyzer.analyze(change, graph) -> ImpactSet`を通じて「依存graph」を実行する', 'then': '「依存graph」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_regeneration_plan.py`'},
-    {'id': 'TC-PIPELINE-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'hash差分', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImpactAnalyzer.analyze(change, graph) -> ImpactSet`を通じて「hash差分」を実行する', 'then': '同一の正規化入力から同一SHA-256を返し、内容差分があればhashが変化する。', 'test_file': '`tests/test_impact_analysis.py`'},
-    {'id': 'TC-PIPELINE-001-06', 'priority': 'P1', 'layer': 'unit', 'title': '承認無効化', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImpactAnalyzer.analyze(change, graph) -> ImpactSet`を通じて「承認無効化」を実行する', 'then': '必要な承認が揃う場合だけ後工程へ進み、未承認・invalidated・changes_requestedでは安定errorで停止する。', 'test_file': '`tests/test_regeneration_plan.py`'},
-    {'id': 'TC-PIPELINE-001-07', 'priority': 'P1', 'layer': 'unit', 'title': '既存正常成果物保持', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImpactAnalyzer.analyze(change, graph) -> ImpactSet`を通じて「既存正常成果物保持」を実行する', 'then': '「既存正常成果物保持」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_impact_analysis.py`'},
-    {'id': 'TC-PIPELINE-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`ImpactAnalyzer.analyze(change, graph) -> ImpactSet`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_regeneration_plan.py`'},
-    {'id': 'TC-PIPELINE-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`ImpactAnalyzer.analyze(change, graph) -> ImpactSet`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_impact_analysis.py`'},
-    {'id': 'TC-PIPELINE-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_regeneration_plan.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/pipelines/impact.py)")
+import hashlib
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Mapping
 
+from script.core.errors import AppError, ErrorCode
+
+
+class ChangeType(str, Enum):
+    SOURCE_TEXT = "source_text"
+    CURRICULUM = "curriculum"
+    CHAPTER_SPEC = "chapter_spec"
+    TEXT = "text"
+    TTS_TEXT = "tts_text"
+    CHARACTER_PROFILE = "character_profile"
+    VOICE_PROFILE = "voice_profile"
+    MP3_TAG = "mp3_tag"
+
+
+class TargetCategory(str, Enum):
+    TOPIC = "topic"
+    CLAIM = "claim"
+    DRAFT_SCRIPT = "draft_script"
+    PROJECT_PLAN = "project_plan"
+    CHAPTER_SPEC = "chapter_spec"
+    NARRATION = "narration"
+    SEGMENT_AUDIO = "segment_audio"
+    CHAPTER_MP3 = "chapter_mp3"
+    AUDIO_MANIFEST = "audio_manifest"
+    MP3_PACKAGING = "mp3_packaging"
+
+
+# 02-process-input-output.md 14節「再利用と部分再生成」表の型化。
+_REPROCESS_TARGETS: dict[ChangeType, tuple[TargetCategory, ...]] = {
+    ChangeType.SOURCE_TEXT: (TargetCategory.TOPIC, TargetCategory.CLAIM, TargetCategory.DRAFT_SCRIPT),
+    ChangeType.CURRICULUM: (TargetCategory.PROJECT_PLAN, TargetCategory.CHAPTER_SPEC, TargetCategory.DRAFT_SCRIPT),
+    ChangeType.CHAPTER_SPEC: (
+        TargetCategory.DRAFT_SCRIPT,
+        TargetCategory.NARRATION,
+        TargetCategory.SEGMENT_AUDIO,
+        TargetCategory.CHAPTER_MP3,
+        TargetCategory.AUDIO_MANIFEST,
+    ),
+    ChangeType.TEXT: (TargetCategory.SEGMENT_AUDIO, TargetCategory.CHAPTER_MP3, TargetCategory.AUDIO_MANIFEST),
+    ChangeType.TTS_TEXT: (TargetCategory.SEGMENT_AUDIO, TargetCategory.CHAPTER_MP3, TargetCategory.AUDIO_MANIFEST),
+    ChangeType.CHARACTER_PROFILE: (
+        TargetCategory.NARRATION,
+        TargetCategory.SEGMENT_AUDIO,
+        TargetCategory.CHAPTER_MP3,
+        TargetCategory.AUDIO_MANIFEST,
+    ),
+    ChangeType.VOICE_PROFILE: (TargetCategory.SEGMENT_AUDIO, TargetCategory.CHAPTER_MP3, TargetCategory.AUDIO_MANIFEST),
+    ChangeType.MP3_TAG: (TargetCategory.MP3_PACKAGING,),
+}
+
+# segment_id/chapter_idの指定が必須なchange_type(仕様表でsegment/章単位と明記されたもの)。
+_REQUIRES_SEGMENT = frozenset({ChangeType.TEXT, ChangeType.TTS_TEXT})
+_REQUIRES_CHAPTER = frozenset({ChangeType.TEXT, ChangeType.TTS_TEXT, ChangeType.CHAPTER_SPEC, ChangeType.MP3_TAG})
+
+
+@dataclass(frozen=True)
+class Change:
+    """1件の変更(source本文、curriculum、章仕様、segment text/tts_text、profile、MP3 tag等)。"""
+
+    change_type: ChangeType
+    project_id: str
+    chapter_id: str | None = None
+    segment_id: str | None = None
+    detail: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.project_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id is required")
+        if self.change_type in _REQUIRES_CHAPTER and not self.chapter_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"{self.change_type.value} change requires chapter_id")
+        if self.change_type in _REQUIRES_SEGMENT and not self.segment_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"{self.change_type.value} change requires segment_id")
+
+
+@dataclass(frozen=True)
+class DependencyGraph:
+    """作品内のchapter/segment実在集合を表す依存graphの最小表現。"""
+
+    project_id: str
+    chapter_ids: frozenset[str] = frozenset()
+    segment_ids_by_chapter: Mapping[str, frozenset[str]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.project_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id is required")
+
+
+@dataclass(frozen=True)
 class ImpactSet:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """ImpactAnalyzer.analyze()の戻り値。"""
+
+    project_id: str
+    change_type: ChangeType
+    chapter_id: str | None
+    segment_id: str | None
+    targets: tuple[TargetCategory, ...]
+    content_hash: str
+
 
 class ImpactAnalyzer:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def analyze(self, change: Any, graph: Any) -> ImpactSet:
-        """変更種別から再処理対象を決定する。
+    """変更種別と依存graphから、再処理が必要な対象categoryを決定的に導出する。"""
 
-        Public contract: ``ImpactAnalyzer.analyze(change, graph) -> ImpactSet``.
-        """
-        _step4_unimplemented('ImpactAnalyzer.analyze')
+    def analyze(self, change: Change, graph: DependencyGraph) -> ImpactSet:
+        """変更種別から再処理対象を決定する。"""
+        if change is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "change is required")
+        if graph is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "graph is required")
+        if change.project_id != graph.project_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "change references a different project than graph")
+
+        if change.chapter_id is not None and change.chapter_id not in graph.chapter_ids:
+            raise AppError(ErrorCode.NOT_FOUND, f"unknown chapter_id: {change.chapter_id}")
+
+        if change.segment_id is not None:
+            known_segments = graph.segment_ids_by_chapter.get(change.chapter_id, frozenset())
+            if change.segment_id not in known_segments:
+                raise AppError(ErrorCode.NOT_FOUND, f"unknown segment_id: {change.segment_id}")
+
+        targets = _REPROCESS_TARGETS[change.change_type]
+        content_hash = self._compute_content_hash(change)
+
+        return ImpactSet(
+            project_id=change.project_id,
+            change_type=change.change_type,
+            chapter_id=change.chapter_id,
+            segment_id=change.segment_id,
+            targets=targets,
+            content_hash=content_hash,
+        )
+
+    @staticmethod
+    def _compute_content_hash(change: Change) -> str:
+        payload = "|".join(
+            [
+                change.change_type.value,
+                change.project_id,
+                change.chapter_id or "",
+                change.segment_id or "",
+                change.detail,
+            ]
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()

@@ -1,47 +1,55 @@
-from __future__ import annotations
+"""script/source_processing/images/quality.py — 公開契約: assess_image_quality(page) -> ImageQualityReport.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/source_processing/images/quality.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-IMAGE-002
+Contract: docs/test-cases/TASK-IMAGE-002-image-preprocessing-and-quality-review.md
+Spec: docs/specifications/image-material-ingestion.md (13節 品質判定)
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-IMAGE-002', 'assess_image_quality(page) -> ImageQualityReport', 'blank/blur/skew/contrast/vertical候補をflag化する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-IMAGE-002-01', 'priority': 'P0', 'layer': 'unit', 'title': '原画像不変', 'given': '回転・contrast処理対象', 'when': 'preprocessする', 'then': '原画像hash不変で派生PNGとparametersを保存', 'test_file': '`tests/test_image_preprocessing.py`'},
-    {'id': 'TC-IMAGE-002-02', 'priority': 'P0', 'layer': 'unit', 'title': 'blank候補', 'given': 'ほぼ白紙の画像', 'when': 'quality評価する', 'then': '削除せずblank_candidate warningにする', 'test_file': '`tests/test_image_quality_flags.py`'},
-    {'id': 'TC-IMAGE-002-03', 'priority': 'P0', 'layer': 'unit', 'title': '見開きlocator', 'given': '見開き画像', 'when': 'splitする', 'then': '左右の元page座標対応を保持する', 'test_file': '`tests/test_image_preprocessing.py`'},
-    {'id': 'TC-IMAGE-002-04', 'priority': 'P1', 'layer': 'unit', 'title': '決定的な低リスク補正', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImagePreprocessor.process(page, options) -> PreprocessedPage`を通じて「決定的な低リスク補正」を実行する', 'then': '「決定的な低リスク補正」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_image_quality_flags.py`'},
-    {'id': 'TC-IMAGE-002-05', 'priority': 'P1', 'layer': 'unit', 'title': 'before/after hash', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImagePreprocessor.process(page, options) -> PreprocessedPage`を通じて「before/after hash」を実行する', 'then': '同一の正規化入力から同一SHA-256を返し、内容差分があればhashが変化する。', 'test_file': '`tests/test_image_preprocessing.py`'},
-    {'id': 'TC-IMAGE-002-06', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`ImagePreprocessor.process(page, options) -> PreprocessedPage`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_image_quality_flags.py`'},
-    {'id': 'TC-IMAGE-002-07', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`ImagePreprocessor.process(page, options) -> PreprocessedPage`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_image_preprocessing.py`'},
-    {'id': 'TC-IMAGE-002-08', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_image_quality_flags.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/source_processing/images/quality.py)")
+from dataclasses import dataclass
+from pathlib import Path
 
+from PIL import Image, ImageStat
+
+from script.core.errors import AppError, ErrorCode
+from script.source_processing.images.manifest import PageEntry
+
+# 画素値のstddevが極めて低い(ほぼ均一な白紙)場合にblank候補とする。
+# 具体的な閾値はimage-material-ingestion.md 19節の未決定事項であり、
+# 実測後にprofileへ切り出す前提の暫定値。
+_BLANK_STDDEV_THRESHOLD = 5.0
+_LOW_RESOLUTION_PIXEL_THRESHOLD = 300 * 300
+
+
+@dataclass(frozen=True)
 class ImageQualityReport:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """blank/低解像度等の品質flag(削除は行わない、warningとして記録するのみ)。"""
 
-def assess_image_quality(page: Any) -> ImageQualityReport:
-    """blank/blur/skew/contrast/vertical候補をflag化する。
+    image_id: str
+    warnings: tuple[str, ...] = ()
 
-    Public contract: ``assess_image_quality(page) -> ImageQualityReport``.
-    """
-    _step4_unimplemented('assess_image_quality')
+
+def assess_image_quality(page: PageEntry) -> ImageQualityReport:
+    """blank/blur/skew/contrast/vertical候補をflag化する。"""
+    if page is None or not page.original_path or not page.image_id:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "page (with original_path and image_id) is required")
+
+    path = Path(page.original_path)
+    if not path.is_file():
+        raise AppError(ErrorCode.NOT_FOUND, f"image does not exist: {path}")
+
+    warnings: list[str] = []
+    with Image.open(path) as image:
+        width, height = image.size
+        grayscale = image.convert("L")
+        stat = ImageStat.Stat(grayscale)
+        stddev = stat.stddev[0]
+
+    if stddev < _BLANK_STDDEV_THRESHOLD:
+        # image-material-ingestion.md 11節: blank page候補は削除せずmanifestへ残す。
+        warnings.append("blank_candidate")
+
+    if width * height < _LOW_RESOLUTION_PIXEL_THRESHOLD:
+        warnings.append("low_resolution")
+
+    return ImageQualityReport(image_id=page.image_id, warnings=tuple(warnings))

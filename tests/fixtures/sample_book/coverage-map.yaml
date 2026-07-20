@@ -1,0 +1,12 @@
+schema_version: "1.0"
+coverage:
+  - topic_id: topic-basics
+    status: covered
+    source_ids: ["source-official-guide", "source-free-textbook"]
+  - topic_id: topic-structure-only
+    status: covered
+    source_ids: ["source-public-toc"]
+  - topic_id: topic-advanced
+    status: missing
+    source_ids: []
+    next_action: add_source

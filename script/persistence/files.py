@@ -1,56 +1,65 @@
-from __future__ import annotations
+"""script/persistence/files.py — 公開契約: atomic_write_bytes, copy_immutable.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/persistence/files.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-FILE-001
+Contract: docs/test-cases/TASK-FILE-001-local-file-persistence-and-project-layout.md
+Spec: docs/specifications/17-local-data-persistence-policy.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-FILE-001', 'atomic_write_bytes(path: Path, data: bytes, *, backup: bool = True) -> None', '同一volumeの一時ファイルから置換し、失敗時に旧正常ファイルを保持する。'),
-    ('TASK-FILE-001', 'copy_immutable(source: Path, destination: Path) -> FileDigest', '入力を変更せずコピーしSHA-256を返す。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-FILE-001-01', 'priority': 'P0', 'layer': 'unit', 'title': 'atomic write失敗', 'given': '既存正常ファイルがありreplace前に例外を注入', 'when': 'atomic_writeを実行する', 'then': '旧ファイルが完全に残り一時ファイルをcleanupする', 'test_file': '`tests/test_persistence_paths.py`'},
-    {'id': 'TC-FILE-001-02', 'priority': 'P0', 'layer': 'unit', 'title': 'lock競合', 'given': '同じProject lockを保持中', 'when': '2つ目のlockを取得する', 'then': '競合errorとなり既存lockを壊さない', 'test_file': '`tests/test_atomic_file_write.py`'},
-    {'id': 'TC-FILE-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'root escape拒否', 'given': '`../outside`を含む相対候補', 'when': 'Project pathを解決する', 'then': 'Project root外を拒否する', 'test_file': '`tests/test_project_locking.py`'},
-    {'id': 'TC-FILE-001-04', 'priority': 'P1', 'layer': 'unit', 'title': '最低1世代backup', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ProjectPaths.for_root(data_root: Path, project_id: str) -> ProjectPaths`を通じて「最低1世代backup」を実行する', 'then': '失敗前の正常状態をbackupから復旧でき、復旧対象のhashを検証する。', 'test_file': '`tests/test_persistence_paths.py`'},
-    {'id': 'TC-FILE-001-05', 'priority': 'P1', 'layer': 'unit', 'title': '入力原本のimmutable保存', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ProjectPaths.for_root(data_root: Path, project_id: str) -> ProjectPaths`を通じて「入力原本のimmutable保存」を実行する', 'then': '処理前後で入力ファイルのbyte列とSHA-256が一致し、派生物だけが新規作成される。', 'test_file': '`tests/test_atomic_file_write.py`'},
-    {'id': 'TC-FILE-001-06', 'priority': 'P1', 'layer': 'integration_mock', 'title': '絶対パスのDB保存禁止', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ProjectPaths.for_root(data_root: Path, project_id: str) -> ProjectPaths`を通じて「絶対パスのDB保存禁止」を実行する', 'then': '保存値はProject root基準の相対pathとなり、絶対path・root外escapeは拒否される。', 'test_file': '`tests/test_project_locking.py`'},
-    {'id': 'TC-FILE-001-07', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`ProjectPaths.for_root(data_root: Path, project_id: str) -> ProjectPaths`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_persistence_paths.py`'},
-    {'id': 'TC-FILE-001-08', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`ProjectPaths.for_root(data_root: Path, project_id: str) -> ProjectPaths`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_atomic_file_write.py`'},
-    {'id': 'TC-FILE-001-09', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_project_locking.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/persistence/files.py)")
+import hashlib
+import os
+import shutil
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 
+from script.core.errors import AppError, ErrorCode
+
+
+@dataclass(frozen=True)
 class FileDigest:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """入力・成果物のhash表現。"""
+
+    algorithm: str
+    value: str
+
+
+def _write_via_temp_then_replace(destination: Path, data: bytes) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=str(destination.parent), prefix=f".{destination.name}.", suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, destination)
+    except Exception as exc:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise AppError(
+            ErrorCode.INTERNAL_ERROR,
+            f"atomic write failed for {destination}",
+            technical_detail=str(exc),
+        ) from exc
+
 
 def atomic_write_bytes(path: Path, data: bytes, *, backup: bool = True) -> None:
-    """同一volumeの一時ファイルから置換し、失敗時に旧正常ファイルを保持する。
+    """同一volumeの一時ファイルから置換し、失敗時に旧正常ファイルを保持する。"""
+    path = Path(path)
+    if backup and path.exists():
+        backup_path = path.with_name(path.name + ".bak")
+        shutil.copy2(path, backup_path)
+    _write_via_temp_then_replace(path, data)
 
-    Public contract: ``atomic_write_bytes(path: Path, data: bytes, *, backup: bool = True) -> None``.
-    """
-    _step4_unimplemented('atomic_write_bytes')
 
 def copy_immutable(source: Path, destination: Path) -> FileDigest:
-    """入力を変更せずコピーしSHA-256を返す。
-
-    Public contract: ``copy_immutable(source: Path, destination: Path) -> FileDigest``.
-    """
-    _step4_unimplemented('copy_immutable')
+    """入力を変更せずコピーしSHA-256を返す。"""
+    source = Path(source)
+    destination = Path(destination)
+    if not source.is_file():
+        raise AppError(ErrorCode.NOT_FOUND, f"source file does not exist: {source}")
+    data = source.read_bytes()
+    _write_via_temp_then_replace(destination, data)
+    digest = hashlib.sha256(data).hexdigest()
+    return FileDigest(algorithm="sha256", value=digest)

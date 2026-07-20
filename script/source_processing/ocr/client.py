@@ -1,73 +1,183 @@
-from __future__ import annotations
+"""script/source_processing/ocr/client.py — 公開契約: OcrClient.check_runtime/recognize.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/source_processing/ocr/client.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-OCR-001
+Contract: docs/test-cases/TASK-OCR-001-ocr-and-scanned-pdf-processing.md
+Spec: docs/specifications/ocr-and-scanned-pdf.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-OCR-001', 'OcrClient.check_runtime() -> RuntimeHealth', 'Tesseractの存在・version・言語を副作用なく確認する。'),
-    ('TASK-OCR-001', 'OcrClient.recognize(image_path, options) -> OcrPageResult', 'subprocessを介して1ページをOCRする。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-OCR-001-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'runtimeなし', 'given': 'Tesseractが見つからない', 'when': 'OCRを開始', 'then': '疎通確認で停止しSourceをfailed/reviewableにする', 'test_file': '`tests/test_ocr_client.py`'},
-    {'id': 'TC-OCR-001-02', 'priority': 'P0', 'layer': 'unit', 'title': '高リスク要素', 'given': 'table/code/math/figure候補page', 'when': 'pipeline処理', 'then': 'review_required flagを付け自動確定しない', 'test_file': '`tests/test_ocr_pipeline.py`'},
-    {'id': 'TC-OCR-001-03', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'ページ失敗分離', 'given': '複数page中1件だけsubprocess失敗', 'when': '処理', 'then': '他page結果を保持しmanifestに失敗を記録', 'test_file': '`tests/test_ocr_client.py`'},
-    {'id': 'TC-OCR-001-04', 'priority': 'P1', 'layer': 'integration_mock', 'title': 'Tesseract subprocess/adapter境界', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`OcrClient.check_runtime() -> RuntimeHealth`を通じて「Tesseract subprocess/adapter境界」を実行する', 'then': '「Tesseract subprocess/adapter境界」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_ocr_pipeline.py`'},
-    {'id': 'TC-OCR-001-05', 'priority': 'P1', 'layer': 'unit', 'title': '言語設定', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`OcrClient.check_runtime() -> RuntimeHealth`を通じて「言語設定」を実行する', 'then': '「言語設定」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_ocr_client.py`'},
-    {'id': 'TC-OCR-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'confidence', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`OcrClient.check_runtime() -> RuntimeHealth`を通じて「confidence」を実行する', 'then': '「confidence」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_ocr_pipeline.py`'},
-    {'id': 'TC-OCR-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'table/code/math/figure flag', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`OcrClient.check_runtime() -> RuntimeHealth`を通じて「table/code/math/figure flag」を実行する', 'then': '「table/code/math/figure flag」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_ocr_client.py`'},
-    {'id': 'TC-OCR-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`OcrClient.check_runtime() -> RuntimeHealth`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_ocr_pipeline.py`'},
-    {'id': 'TC-OCR-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`OcrClient.check_runtime() -> RuntimeHealth`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_ocr_client.py`'},
-    {'id': 'TC-OCR-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_ocr_pipeline.py`'},
-    {'id': 'TC-OCR-001-11', 'priority': 'P0', 'layer': 'integration_smoke', 'title': 'Tesseract runtimeの疎通確認', 'given': '実接続テストが明示的に有効化され、必要な設定が存在する', 'when': '`tesseract --version`と必要言語一覧を確認し、画像処理を行わない。', 'then': 'ConnectivityResultを返す。失敗時は原因を秘密値なしで報告し、実機能テストを開始しない。', 'test_file': '`tests/test_ocr_client.py`'},
-    {'id': 'TC-OCR-001-12', 'priority': 'P1', 'layer': 'integration_live', 'title': 'Tesseract runtimeの実機能テスト', 'given': '`tesseract_connectivity_gate`が成功済み', 'when': '疎通成功後、1行だけの固定fixture画像をOCRし、期待語を含むpage resultを確認する。', 'then': '最小の実機能結果を検証する。疎通fixtureなしでこのテストを単独実行できない。', 'test_file': '`tests/test_ocr_pipeline.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/source_processing/ocr/client.py)")
+import os
+import subprocess
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
-class OcrPageResult:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+from script.core.errors import AppError, ErrorCode
 
+SubprocessRunner = Callable[[Sequence[str]], subprocess.CompletedProcess]
+
+_DEFAULT_TIMEOUT_SECONDS = 30
+
+
+@dataclass(frozen=True)
 class RuntimeHealth:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
+    """Tesseract runtimeの存在・version・言語一覧(副作用なしの確認結果)。"""
+
+    available: bool
+    version: str | None = None
+    available_languages: tuple[str, ...] = ()
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class OcrOptions:
+    """1ページOCRの設定(ocr-and-scanned-pdf.md 5.3節: 既定はjpn+eng)。"""
+
+    language_mode: str = "jpn+eng"
+
+
+@dataclass(frozen=True)
+class OcrPageResult:
+    """1ページ分のOCR結果とconfidence。"""
+
+    image_path: str
+    text: str
+    confidence: float
+    language_mode: str
+    warnings: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.image_path:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "image_path is required")
+        if not self.language_mode:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "language_mode is required")
+
+
+def _default_runner(args: Sequence[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        list(args),
+        capture_output=True,
+        text=True,
+        timeout=_DEFAULT_TIMEOUT_SECONDS,
+        check=False,
+    )
+
+
+def _parse_tesseract_tsv(tsv_text: str) -> tuple[str, float]:
+    """tesseractのtsv出力からtextとconfidence(0.0-1.0)を再構成する。"""
+    lines = tsv_text.splitlines()
+    if not lines:
+        return "", 0.0
+
+    header = lines[0].split("\t")
+    try:
+        conf_index = header.index("conf")
+        text_index = header.index("text")
+    except ValueError:
+        return "", 0.0
+
+    words: list[str] = []
+    confidences: list[float] = []
+    for line in lines[1:]:
+        columns = line.split("\t")
+        if len(columns) <= max(conf_index, text_index):
+            continue
+        text = columns[text_index]
         try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+            confidence = float(columns[conf_index])
+        except ValueError:
+            continue
+        if confidence >= 0 and text.strip():
+            words.append(text)
+            confidences.append(confidence)
+
+    full_text = " ".join(words)
+    overall_confidence = (sum(confidences) / len(confidences) / 100.0) if confidences else 0.0
+    return full_text, overall_confidence
+
 
 class OcrClient:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
+    """Tesseractをsubprocess経由で呼び出すadapter(クラウドOCRは使用しない)。"""
+
+    def __init__(
+        self,
+        *,
+        tesseract_cmd: str | None = None,
+        runner: SubprocessRunner | None = None,
+    ) -> None:
+        self._tesseract_cmd = tesseract_cmd or os.environ.get("TESSERACT_CMD") or "tesseract"
+        self._runner = runner or _default_runner
+
     def check_runtime(self) -> RuntimeHealth:
-        """Tesseractの存在・version・言語を副作用なく確認する。
+        """Tesseractの存在・version・言語を副作用なく確認する。"""
+        try:
+            version_result = self._runner([self._tesseract_cmd, "--version"])
+        except FileNotFoundError:
+            return RuntimeHealth(available=False, error="tesseract executable not found")
+        except Exception as exc:  # noqa: BLE001 - 外部subprocessの任意の失敗を安全に握りつぶす
+            return RuntimeHealth(available=False, error=str(exc))
 
-        Public contract: ``OcrClient.check_runtime() -> RuntimeHealth``.
-        """
-        _step4_unimplemented('OcrClient.check_runtime')
-    def recognize(self, image_path: Any, options: Any) -> OcrPageResult:
-        """subprocessを介して1ページをOCRする。
+        if version_result.returncode != 0:
+            error_message = (version_result.stderr or "tesseract --version failed").strip()
+            return RuntimeHealth(available=False, error=error_message)
 
-        Public contract: ``OcrClient.recognize(image_path, options) -> OcrPageResult``.
-        """
-        _step4_unimplemented('OcrClient.recognize')
+        version_line = version_result.stdout.splitlines()[0].strip() if version_result.stdout else ""
+
+        languages: tuple[str, ...] = ()
+        try:
+            lang_result = self._runner([self._tesseract_cmd, "--list-langs"])
+        except Exception:  # noqa: BLE001 - 言語一覧取得の失敗はrutime判定自体を失敗にしない
+            lang_result = None
+
+        if lang_result is not None and lang_result.returncode == 0:
+            lang_lines = [line.strip() for line in lang_result.stdout.splitlines() if line.strip()]
+            languages = tuple(lang_lines[1:]) if len(lang_lines) > 1 else tuple(lang_lines)
+
+        return RuntimeHealth(available=True, version=version_line, available_languages=languages)
+
+    def recognize(self, image_path: Path, options: OcrOptions) -> OcrPageResult:
+        """subprocessを介して1ページをOCRする。"""
+        if not image_path:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "image_path is required")
+        if options is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "options is required")
+
+        image_path = Path(image_path)
+        if not image_path.is_file():
+            raise AppError(ErrorCode.NOT_FOUND, f"image does not exist: {image_path}")
+
+        args = [self._tesseract_cmd, str(image_path), "stdout", "-l", options.language_mode, "tsv"]
+        try:
+            result = self._runner(args)
+        except FileNotFoundError as exc:
+            raise AppError(
+                ErrorCode.EXTERNAL_UNAVAILABLE,
+                "tesseract executable not found",
+                technical_detail=str(exc),
+            ) from exc
+        except Exception as exc:  # noqa: BLE001 - subprocessの任意の失敗をAppErrorへ変換する
+            raise AppError(
+                ErrorCode.EXTERNAL_UNAVAILABLE,
+                f"tesseract subprocess failed for {image_path}",
+                technical_detail=str(exc),
+            ) from exc
+
+        if result.returncode != 0:
+            raise AppError(
+                ErrorCode.EXTERNAL_UNAVAILABLE,
+                f"tesseract exited with a non-zero status for {image_path}",
+                technical_detail=(result.stderr or "").strip(),
+            )
+
+        text, confidence = _parse_tesseract_tsv(result.stdout)
+        warnings: list[str] = []
+        if not text.strip():
+            warnings.append("empty_ocr_result")
+
+        return OcrPageResult(
+            image_path=str(image_path),
+            text=text,
+            confidence=confidence,
+            language_mode=options.language_mode,
+            warnings=tuple(warnings),
+        )

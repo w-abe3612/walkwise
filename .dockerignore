@@ -2,8 +2,12 @@
 .venv
 __pycache__
 *.pyc
+.pytest_cache
 node_modules
 dist
 build
+release
 .env
 .env.local
+dumps
+audio_book_creation_dump_*.txt

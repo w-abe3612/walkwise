@@ -1,0 +1,7 @@
+schema_version: "1.0"
+approvals_override:
+  preview_audio:
+    status: review_pending
+    approved_by: null
+    approved_at: null
+    target: null

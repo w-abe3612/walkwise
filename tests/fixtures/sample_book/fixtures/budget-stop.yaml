@@ -1,0 +1,4 @@
+schema_version: "1.0"
+budget_state:
+  stop_usd: 0.01
+  spent_usd: 0.01

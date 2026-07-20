@@ -1,54 +1,144 @@
-from __future__ import annotations
+"""script/pipelines/curriculum.py — 公開契約: CurriculumPipeline.generate(analysis, project_plan) -> CurriculumResult.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/pipelines/curriculum.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-CURRICULUM-001
+Contract: docs/test-cases/TASK-CURRICULUM-001-curriculum-and-chapter-spec-generation.md
+Spec: docs/specifications/04-chapter-generation-schema.md, docs/specifications/03-project-plan-schema.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-CURRICULUM-001', 'CurriculumPipeline.generate(analysis, project_plan) -> CurriculumResult', '承認前draftとしてtopic map・curriculum・章仕様を作る。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-CURRICULUM-001-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': '章参照整合', 'given': 'valid analysis/project plan', 'when': '生成', 'then': 'topic/source参照が存在し章orderが一意', 'test_file': '`tests/test_curriculum_pipeline.py`'},
-    {'id': 'TC-CURRICULUM-001-02', 'priority': 'P0', 'layer': 'unit', 'title': '未知topic', 'given': 'chapter specが未定義topicを参照', 'when': 'validate', 'then': 'errorにする', 'test_file': '`tests/test_chapter_spec_schema.py`'},
-    {'id': 'TC-CURRICULUM-001-03', 'priority': 'P0', 'layer': 'unit', 'title': '承認前状態', 'given': 'AI生成直後', 'when': 'resultを保存', 'then': 'approvedではなくreview_pending/draft', 'test_file': '`tests/test_curriculum_pipeline.py`'},
-    {'id': 'TC-CURRICULUM-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'learning outcomes', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`TopicMap/Curriculum`を通じて「learning outcomes」を実行する', 'then': '「learning outcomes」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_chapter_spec_schema.py`'},
-    {'id': 'TC-CURRICULUM-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'coverage反映', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`TopicMap/Curriculum`を通じて「coverage反映」を実行する', 'then': '「coverage反映」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_curriculum_pipeline.py`'},
-    {'id': 'TC-CURRICULUM-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'source_ids', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`TopicMap/Curriculum`を通じて「source_ids」を実行する', 'then': '「source_ids」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_chapter_spec_schema.py`'},
-    {'id': 'TC-CURRICULUM-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'AI tier指定', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`TopicMap/Curriculum`を通じて「AI tier指定」を実行する', 'then': '「AI tier指定」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_curriculum_pipeline.py`'},
-    {'id': 'TC-CURRICULUM-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`TopicMap/Curriculum`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_chapter_spec_schema.py`'},
-    {'id': 'TC-CURRICULUM-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`TopicMap/Curriculum`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_curriculum_pipeline.py`'},
-    {'id': 'TC-CURRICULUM-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_chapter_spec_schema.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/pipelines/curriculum.py)")
+from collections.abc import Mapping
+from dataclasses import dataclass
 
+from script.ai_clients.base import AIClient, AIRequest
+from script.core.errors import AppError, ErrorCode
+from script.pipelines.source_analysis import SourceAnalysisBundle
+from script.schemas.chapter_spec import ChapterSpec, RequiredTopicRef
+from script.schemas.curriculum import Curriculum, CurriculumChapter, TopicMap, TopicMapEntry
+from script.schemas.source_analysis import CoverageStatus
+
+_STANDARD_MODEL_HINT = "gemini-2.5-flash"
+
+# 04-chapter-generation-schema.md ai_execution_policy: 章生成に使う論理層の既定値。
+_DEFAULT_AI_EXECUTION_POLICY = {
+    "draft_tier": "standard_generation",
+    "claim_extraction_tier": "economy_structuring",
+    "final_review_tier": "high_assurance_review",
+}
+
+_EXCLUDED_COVERAGE_STATUSES = (CoverageStatus.MISSING, CoverageStatus.CONFLICT)
+
+
+@dataclass(frozen=True)
 class CurriculumResult:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """CurriculumPipeline.generate()の戻り値。承認前draftとして保存される。"""
+
+    project_id: str
+    status: str
+    topic_map: TopicMap
+    curriculum: Curriculum
+    chapter_specs: tuple[ChapterSpec, ...]
+
+    def __post_init__(self) -> None:
+        if self.status not in ("review_pending", "draft"):
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                f"CurriculumResult must be review_pending or draft, got: {self.status}",
+            )
+
 
 class CurriculumPipeline:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def generate(self, analysis: Any, project_plan: Any) -> CurriculumResult:
-        """承認前draftとしてtopic map・curriculum・章仕様を作る。
+    """coverage反映済みのtopicから、承認前draftのtopic map・curriculum・章仕様を作る。"""
 
-        Public contract: ``CurriculumPipeline.generate(analysis, project_plan) -> CurriculumResult``.
-        """
-        _step4_unimplemented('CurriculumPipeline.generate')
+    def __init__(self, *, ai_client: AIClient, model: str = _STANDARD_MODEL_HINT) -> None:
+        if ai_client is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "ai_client is required")
+        if not model:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "model is required")
+        self._ai_client = ai_client
+        self._model = model
+
+    def generate(self, analysis: SourceAnalysisBundle, project_plan: Mapping[str, object]) -> CurriculumResult:
+        """coverage反映済みのtopicだけをcurriculumへ含め、承認前draftを返す。"""
+        if analysis is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "analysis is required")
+        if not project_plan:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_plan is required")
+        if not analysis.topic_index.entries:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "analysis.topic_index must not be empty")
+
+        project_id = analysis.project_id
+        coverage_by_topic = {entry.topic_id: entry for entry in analysis.coverage_map.entries}
+
+        topic_entries: list[TopicMapEntry] = []
+        for index_entry in sorted(analysis.topic_index.entries, key=lambda e: e.topic_id):
+            coverage_entry = coverage_by_topic.get(index_entry.topic_id)
+            if coverage_entry is not None and coverage_entry.status in _EXCLUDED_COVERAGE_STATUSES:
+                # missing/conflictのtopicは解決されるまでcurriculumへ含めない(coverage反映)。
+                continue
+            source_refs = coverage_entry.source_refs if coverage_entry is not None else ()
+            topic_entries.append(
+                TopicMapEntry(
+                    topic_id=index_entry.topic_id,
+                    title=index_entry.topic_id.replace("_", " ").strip().title() or index_entry.topic_id,
+                    source_ids=source_refs,
+                )
+            )
+
+        if not topic_entries:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                "no topics are eligible for curriculum generation (all missing/conflict)",
+            )
+
+        topic_map = TopicMap(entries=tuple(topic_entries))
+
+        # AI tier指定: 章生成の下書きはstandard_generation層のmodelで実行する(黙った降格をしない)。
+        request = AIRequest(
+            user_text="\n".join(entry.title for entry in topic_map.entries),
+            system_instruction="Draft a chapter ordering rationale for these topics.",
+            model=self._model,
+        )
+        self._ai_client.generate(request)
+
+        chapters = tuple(
+            CurriculumChapter(
+                chapter_id=f"chapter-{order:04d}",
+                order=order,
+                title=entry.title,
+                topic_ids=(entry.topic_id,),
+                source_ids=entry.source_ids,
+            )
+            for order, entry in enumerate(topic_map.entries, start=1)
+        )
+        curriculum = Curriculum(project_id=project_id, chapters=chapters, status="draft")
+
+        known_topic_ids = topic_map.topic_ids()
+        known_source_ids = frozenset(source_id for entry in topic_map.entries for source_id in entry.source_ids)
+
+        chapter_specs = tuple(
+            ChapterSpec(
+                project_id=project_id,
+                chapter_id=chapter.chapter_id,
+                order=chapter.order,
+                title=chapter.title,
+                purpose=f"Cover the topic: {chapter.title}",
+                learning_outcomes=(f"Explain {chapter.title}",),
+                required_topics=tuple(RequiredTopicRef(topic_id=topic_id) for topic_id in chapter.topic_ids),
+                explanation_order=chapter.topic_ids,
+                source_ids=chapter.source_ids,
+                known_topic_ids=known_topic_ids,
+                known_source_ids=known_source_ids,
+                ai_execution_policy=dict(_DEFAULT_AI_EXECUTION_POLICY),
+            )
+            for chapter in curriculum.chapters
+        )
+        for chapter_spec in chapter_specs:
+            chapter_spec.validate()
+
+        return CurriculumResult(
+            project_id=project_id,
+            status="review_pending",
+            topic_map=topic_map,
+            curriculum=curriculum,
+            chapter_specs=chapter_specs,
+        )

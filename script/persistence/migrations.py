@@ -1,51 +1,126 @@
-from __future__ import annotations
+"""script/persistence/migrations.py — 公開契約: MigrationRunner.apply_all/verify_applied_checksums.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/persistence/migrations.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-DB-001
+Contract: docs/test-cases/TASK-DB-001-sqlite-migrations-and-initial-schema.md
+Spec: docs/db/00-database-overview.md (5.5節), docs/db/90-schema-migrations-table.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-DB-001', 'MigrationRunner.apply_all(connection, migrations_dir, *, backup_path=None) -> list[str]', '未適用migrationを順序どおり適用しchecksumを記録する。'),
-    ('TASK-DB-001', 'MigrationRunner.verify_applied_checksums(...) -> None', '適用済みファイル改変を検出して停止する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-DB-001-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': '初期schema', 'given': '空SQLite DB', 'when': '全migrationを適用する', 'then': '6テーブル・FK・index・checkが作成される', 'test_file': '`tests/test_database_connection.py`'},
-    {'id': 'TC-DB-001-02', 'priority': 'P0', 'layer': 'integration_mock', 'title': '冪等適用', 'given': '適用済みDB', 'when': 'apply_allを再実行する', 'then': '新規適用0件でschemaと履歴が変わらない', 'test_file': '`tests/test_migration_runner.py`'},
-    {'id': 'TC-DB-001-03', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'checksum改変', 'given': '適用済みmigration fileの内容を変更', 'when': 'checksum検証する', 'then': '起動停止相当errorとなる', 'test_file': '`tests/test_initial_schema.py`'},
-    {'id': 'TC-DB-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'SQLite接続factory', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`connect_database(path: Path) -> sqlite3.Connection`を通じて「SQLite接続factory」を実行する', 'then': '「SQLite接続factory」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_database_connection.py`'},
-    {'id': 'TC-DB-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'PRAGMA foreign_keys', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`connect_database(path: Path) -> sqlite3.Connection`を通じて「PRAGMA foreign_keys」を実行する', 'then': '「PRAGMA foreign_keys」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_migration_runner.py`'},
-    {'id': 'TC-DB-001-06', 'priority': 'P1', 'layer': 'integration_mock', 'title': 'migration discovery/order', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`connect_database(path: Path) -> sqlite3.Connection`を通じて「migration discovery/order」を実行する', 'then': '入力の論理順を維持し、再実行しても同じ順序になる。順序重複・欠落は検出する。', 'test_file': '`tests/test_initial_schema.py`'},
-    {'id': 'TC-DB-001-07', 'priority': 'P1', 'layer': 'unit', 'title': '0001 initial schema', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`connect_database(path: Path) -> sqlite3.Connection`を通じて「0001 initial schema」を実行する', 'then': '「0001 initial schema」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_database_connection.py`'},
-    {'id': 'TC-DB-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`connect_database(path: Path) -> sqlite3.Connection`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_migration_runner.py`'},
-    {'id': 'TC-DB-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`connect_database(path: Path) -> sqlite3.Connection`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_initial_schema.py`'},
-    {'id': 'TC-DB-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_database_connection.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/persistence/migrations.py)")
+import hashlib
+import re
+import shutil
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+
+from script.core.errors import AppError, ErrorCode
+
+_FILENAME_PATTERN = re.compile(r"^(\d{4})_.*\.sql$")
+
+_SCHEMA_MIGRATIONS_DDL = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    migration_id TEXT PRIMARY KEY,
+    checksum TEXT NOT NULL,
+    applied_at TEXT NOT NULL
+)
+"""
+
+
+def _discover_migrations(migrations_dir: Path) -> list[Path]:
+    migrations_dir = Path(migrations_dir)
+    files = sorted(migrations_dir.glob("*.sql"))
+    seen: dict[str, Path] = {}
+    for file in files:
+        match = _FILENAME_PATTERN.match(file.name)
+        if not match:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"invalid migration filename: {file.name}")
+        order = match.group(1)
+        if order in seen:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                f"duplicate migration order {order}: {seen[order].name} and {file.name}",
+            )
+        seen[order] = file
+    return files
+
+
+def _database_file_path(connection: sqlite3.Connection) -> Path | None:
+    row = connection.execute("PRAGMA database_list").fetchone()
+    if row is None:
+        return None
+    file_value = row["file"] if isinstance(row, sqlite3.Row) else row[2]
+    return Path(file_value) if file_value else None
+
 
 class MigrationRunner:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def apply_all(self, connection: Any, migrations_dir: Any, *, backup_path: Any = None) -> list[str]:
-        """未適用migrationを順序どおり適用しchecksumを記録する。
+    """SQLite migrationの発見・適用・checksum検証を行う。"""
 
-        Public contract: ``MigrationRunner.apply_all(connection, migrations_dir, *, backup_path=None) -> list[str]``.
-        """
-        _step4_unimplemented('MigrationRunner.apply_all')
-    def verify_applied_checksums(self, *args: Any, **kwargs: Any) -> None:
-        """適用済みファイル改変を検出して停止する。
+    def verify_applied_checksums(self, connection: sqlite3.Connection, migrations_dir: Path) -> None:
+        """適用済みファイル改変を検出して停止する。"""
+        if connection is None or migrations_dir is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "connection and migrations_dir are required")
 
-        Public contract: ``MigrationRunner.verify_applied_checksums(...) -> None``.
-        """
-        _step4_unimplemented('MigrationRunner.verify_applied_checksums')
+        connection.execute(_SCHEMA_MIGRATIONS_DDL)
+        applied = {
+            row["migration_id"]: row["checksum"]
+            for row in connection.execute("SELECT migration_id, checksum FROM schema_migrations")
+        }
+        for file in _discover_migrations(migrations_dir):
+            migration_id = file.stem
+            if migration_id not in applied:
+                continue
+            current_checksum = hashlib.sha256(file.read_bytes()).hexdigest()
+            if current_checksum != applied[migration_id]:
+                raise AppError(
+                    ErrorCode.CONFLICT,
+                    f"migration file has been modified after being applied: {migration_id}",
+                )
+
+    def apply_all(
+        self,
+        connection: sqlite3.Connection,
+        migrations_dir: Path,
+        *,
+        backup_path: Path | None = None,
+    ) -> list[str]:
+        """未適用migrationを順序どおり適用しchecksumを記録する。"""
+        if connection is None or migrations_dir is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "connection and migrations_dir are required")
+
+        connection.execute(_SCHEMA_MIGRATIONS_DDL)
+        connection.commit()
+
+        self.verify_applied_checksums(connection, migrations_dir)
+
+        applied_ids = {
+            row["migration_id"] for row in connection.execute("SELECT migration_id FROM schema_migrations")
+        }
+        pending = [file for file in _discover_migrations(migrations_dir) if file.stem not in applied_ids]
+
+        if pending and backup_path is not None:
+            db_path = _database_file_path(connection)
+            if db_path is not None and db_path.exists():
+                Path(backup_path).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(db_path, backup_path)
+
+        newly_applied: list[str] = []
+        for file in pending:
+            script = file.read_text(encoding="utf-8")
+            checksum = hashlib.sha256(file.read_bytes()).hexdigest()
+            try:
+                connection.executescript(script)
+                connection.execute(
+                    "INSERT INTO schema_migrations (migration_id, checksum, applied_at) VALUES (?, ?, ?)",
+                    (file.stem, checksum, datetime.now(timezone.utc).isoformat()),
+                )
+                connection.commit()
+            except sqlite3.DatabaseError as exc:
+                connection.rollback()
+                raise AppError(
+                    ErrorCode.INTERNAL_ERROR,
+                    f"failed to apply migration {file.stem}",
+                    technical_detail=str(exc),
+                ) from exc
+            newly_applied.append(file.stem)
+
+        return newly_applied

@@ -1,8 +1,8 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
 related_tasks:
 - TASK-MIGRATION-001
@@ -40,8 +40,10 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_legacy_input_priority.py` — 現在のダンプでは欠落
-- `tests/test_legacy_migration.py` — 現在のダンプでは欠落
+- `tests/test_legacy_input_priority.py` — `TASK-MIGRATION-001`完了。TC-02,04,06,08,10
+  (計5 case)、実測pass済み(2026-07-20)。
+- `tests/test_legacy_migration.py` — `TASK-MIGRATION-001`完了。TC-01,03,05,07,09
+  (計5 case)、実測pass済み(2026-07-20)。
 
 ## 5. 収集・型確認
 
@@ -79,7 +81,9 @@ npm test
 - 通常テストが外部接続しない。
 - STEP3空実装段階では、意図したstrict xfailまたはopt-in skipだけになる。
 - Claude Code本実装後は、対象タスクのxfailを解除し、対象テストがpassする。
-- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない。
+- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない
+  (2026-07-20実測: 対象10 case全pass、Python全体 371 passed/23 deselected/
+  60 xfailed、npm run typecheck成功、Vitest 73 passed/3 skipped)。
 
 ## 9. 停止条件
 

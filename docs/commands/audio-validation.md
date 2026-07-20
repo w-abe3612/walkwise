@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-20'
 related_tasks:
 - TASK-AUDIO-002
 release_scopes:
@@ -20,8 +21,13 @@ STEP3/STEP4の空実装段階では、strict xfail・明示的未実装error・o
 
 ## 2. 関連タスク
 
-- `TASK-AUDIO-002` — 音声自動検査・provisional閾値（MVP）
+- `TASK-AUDIO-002` — 音声自動検査・provisional閾値（MVP、本実装済み）
   - 契約: `docs/test-cases/TASK-AUDIO-002-audio-validation.md`
+  - production: `script/audio/validation.py`, `measurements.py`, `thresholds.py`
+  - 対象10 case(TC-AUDIO-002-01〜10)のうち、外部接続なしの8 case
+    (TC-01〜08)はすべてpassする。TC-09(integration_smoke)/TC-10
+    (integration_live)はこの環境に`FFMPEG_PATH`/`FFPROBE_PATH`が
+    未設定・実行体も未導入のため未確認(既定skip)。
 
 ## 3. 実行前提
 
@@ -40,8 +46,10 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_audio_thresholds.py` — 現在のダンプでは欠落
-- `tests/test_audio_validation.py` — 現在のダンプでは欠落
+- `tests/test_audio_thresholds.py`
+- `tests/test_audio_validation.py`
+
+現在の存在有無・pass状況は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。
 
 ## 5. 収集・型確認
 
@@ -96,8 +104,12 @@ python -m pytest -ra -m "integration_smoke" tests/test_audio_validation.py
 ```powershell
 $env:WALKWISE_RUN_INTEGRATION_SMOKE="1"
 $env:WALKWISE_RUN_INTEGRATION_LIVE="1"
-python -m pytest -ra -m "integration_live" tests/test_audio_validation.py
+python -m pytest -ra -m "integration_live" tests/test_audio_thresholds.py
 ```
+
+TC-AUDIO-002-09(疎通確認)は`tests/test_audio_validation.py`、
+TC-AUDIO-002-10(実機能確認)は`tests/test_audio_thresholds.py`に実装されている
+(STEP2契約のcase ID→test_file対応どおり)。
 
 
 ## 9. 全体回帰

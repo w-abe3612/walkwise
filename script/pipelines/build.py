@@ -1,54 +1,199 @@
-from __future__ import annotations
+"""script/pipelines/build.py — 公開契約: BuildPipeline.run(build_request_id) -> BuildResult.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/pipelines/build.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-AUDIO-003
+Contract: docs/test-cases/TASK-AUDIO-003-chapter-packaging-manifests-and-build-orchestration.md
+Spec: docs/specifications/02-process-input-output.md, docs/db/05-artifacts-table.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-AUDIO-003', 'BuildPipeline.run(build_request_id) -> BuildResult', '承認gateから複数形式Artifact登録までを順序制御する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-AUDIO-003-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': '複数形式', 'given': 'Build Requestがmp3+text', 'when': 'run', 'then': '別file/Artifactとして両方生成し上書きしない', 'test_file': '`tests/test_audio_packaging.py`'},
-    {'id': 'TC-AUDIO-003-02', 'priority': 'P0', 'layer': 'integration_mock', 'title': '承認gate', 'given': 'verified_scriptまたはpreview_audio未承認', 'when': 'run', 'then': 'TTS/packagingを開始しない', 'test_file': '`tests/test_build_pipeline.py`'},
-    {'id': 'TC-AUDIO-003-03', 'priority': 'P0', 'layer': 'unit', 'title': 'manifest順序', 'given': '複数segment/part', 'when': 'package', 'then': 'manifest順と章音声順が一致', 'test_file': '`tests/test_production_manifest.py`'},
-    {'id': 'TC-AUDIO-003-04', 'priority': 'P1', 'layer': 'unit', 'title': '章単位MP3', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ChapterPackager.package(wavs, metadata) -> ChapterArtifact`を通じて「章単位MP3」を実行する', 'then': '有効なmedia header・形式・順序を確認し、破損または形式不一致を成功扱いにしない。', 'test_file': '`tests/test_audio_packaging.py`'},
-    {'id': 'TC-AUDIO-003-05', 'priority': 'P1', 'layer': 'unit', 'title': 'tag metadata', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ChapterPackager.package(wavs, metadata) -> ChapterArtifact`を通じて「tag metadata」を実行する', 'then': '「tag metadata」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_build_pipeline.py`'},
-    {'id': 'TC-AUDIO-003-06', 'priority': 'P1', 'layer': 'unit', 'title': '複数形式同時生成', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ChapterPackager.package(wavs, metadata) -> ChapterArtifact`を通じて「複数形式同時生成」を実行する', 'then': '「複数形式同時生成」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_production_manifest.py`'},
-    {'id': 'TC-AUDIO-003-07', 'priority': 'P1', 'layer': 'unit', 'title': '形式ごとversion', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ChapterPackager.package(wavs, metadata) -> ChapterArtifact`を通じて「形式ごとversion」を実行する', 'then': 'versionを記録し、未知・不一致・改変を検出して黙って互換扱いしない。', 'test_file': '`tests/test_audio_packaging.py`'},
-    {'id': 'TC-AUDIO-003-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`ChapterPackager.package(wavs, metadata) -> ChapterArtifact`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_build_pipeline.py`'},
-    {'id': 'TC-AUDIO-003-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`ChapterPackager.package(wavs, metadata) -> ChapterArtifact`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_production_manifest.py`'},
-    {'id': 'TC-AUDIO-003-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_audio_packaging.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/pipelines/build.py)")
+import contextlib
+import sqlite3
+import tempfile
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 
+from script.audio.packaging import ChapterArtifact, ChapterMetadata, ChapterPackager
+from script.core.errors import AppError, ErrorCode
+from script.domain.enums import ArtifactType
+from script.domain.models import Artifact, BuildRequest
+from script.persistence.repositories import BuildRequestRepository
+from script.schemas.production_manifest import ManifestOutput, ProductionManifest
+from script.services.artifacts import ArtifactService, RegisterArtifact
+
+_MP3_FORMAT = "mp3"
+_TEXT_FORMAT = "text"
+
+
+@dataclass(frozen=True)
+class ChapterBuildContent:
+    """1章分の、初稿検証・TTS工程から得られる素材(実際のAI/TTS実行は本タスクの対象外、呼び出し側が注入する)。"""
+
+    chapter_id: str
+    wavs: tuple[object, ...]
+    metadata: ChapterMetadata
+    verified_text: str
+
+    def __post_init__(self) -> None:
+        if not self.chapter_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "chapter_id is required")
+        if not self.verified_text:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "verified_text is required")
+
+
+@dataclass(frozen=True)
 class BuildResult:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """BuildPipeline.run()の戻り値。"""
+
+    build_request_id: str
+    project_id: str
+    artifacts: tuple[Artifact, ...]
+    manifest: ProductionManifest
+
 
 class BuildPipeline:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def run(self, build_request_id: Any) -> BuildResult:
-        """承認gateから複数形式Artifact登録までを順序制御する。
+    """承認gateから複数形式(mp3/text)のArtifact登録・manifest生成までを順序制御する。"""
 
-        Public contract: ``BuildPipeline.run(build_request_id) -> BuildResult``.
-        """
-        _step4_unimplemented('BuildPipeline.run')
+    def __init__(
+        self,
+        *,
+        connection: sqlite3.Connection,
+        data_root: Path,
+        job_id: str,
+        chapter_packager: ChapterPackager,
+        chapter_content_provider: Callable[[BuildRequest], ChapterBuildContent],
+        approval_gate_check: Callable[[str], bool] | None = None,
+    ) -> None:
+        if connection is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "connection is required")
+        if not data_root:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "data_root is required")
+        if not job_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "job_id is required")
+        if chapter_packager is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "chapter_packager is required")
+        if chapter_content_provider is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "chapter_content_provider is required")
+
+        self._connection = connection
+        self._data_root = Path(data_root)
+        self._job_id = job_id
+        self._chapter_packager = chapter_packager
+        self._chapter_content_provider = chapter_content_provider
+        self._approval_gate_check = approval_gate_check or (lambda build_request_id: True)
+        self._artifact_service = ArtifactService(self._data_root, connection)
+
+    def run(self, build_request_id: str) -> BuildResult:
+        """承認gateから複数形式Artifact登録までを順序制御する。"""
+        if not build_request_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "build_request_id is required")
+
+        build_request = BuildRequestRepository(self._connection).find(build_request_id)
+        if build_request is None:
+            raise AppError(ErrorCode.NOT_FOUND, f"build request not found: {build_request_id}")
+
+        if not self._approval_gate_check(build_request_id):
+            # 承認gate: verified_script/preview_audio未承認ならTTS/packagingを一切開始しない。
+            raise AppError(
+                ErrorCode.PERMISSION_DENIED,
+                f"required approvals (verified_script, preview_audio) are not satisfied: {build_request_id}",
+            )
+
+        content = self._chapter_content_provider(build_request)
+
+        artifacts: list[Artifact] = []
+        outputs: list[ManifestOutput] = []
+
+        if _MP3_FORMAT in build_request.output_formats:
+            chapter_artifact = self._chapter_packager.package(content.wavs, content.metadata)
+            artifact = self._register_bytes(
+                build_request_id=build_request_id,
+                project_id=build_request.project_id,
+                chapter_id=content.chapter_id,
+                artifact_type=ArtifactType.MP3_CHAPTER,
+                data=chapter_artifact.mp3_bytes,
+                path_prefix="audio/chapters",
+                extension="mp3",
+            )
+            artifacts.append(artifact)
+            outputs.append(self._mp3_output(artifact, chapter_artifact))
+
+        if _TEXT_FORMAT in build_request.output_formats:
+            text_bytes = content.verified_text.encode("utf-8")
+            artifact = self._register_bytes(
+                build_request_id=build_request_id,
+                project_id=build_request.project_id,
+                chapter_id=content.chapter_id,
+                artifact_type=ArtifactType.TEXT_VERIFIED_SCRIPT,
+                data=text_bytes,
+                path_prefix="text/verified",
+                extension="txt",
+            )
+            artifacts.append(artifact)
+            outputs.append(
+                ManifestOutput(
+                    audio_id=artifact.artifact_id,
+                    output_type="text_verified_script",
+                    chapter_id=content.chapter_id,
+                    path=artifact.file_path,
+                    content_hash=artifact.content_hash,
+                )
+            )
+
+        manifest = ProductionManifest(project_id=build_request.project_id, outputs=tuple(outputs))
+        manifest.validate()
+
+        return BuildResult(
+            build_request_id=build_request_id,
+            project_id=build_request.project_id,
+            artifacts=tuple(artifacts),
+            manifest=manifest,
+        )
+
+    @staticmethod
+    def _mp3_output(artifact: Artifact, chapter_artifact: ChapterArtifact) -> ManifestOutput:
+        return ManifestOutput(
+            audio_id=artifact.artifact_id,
+            output_type="chapter_mp3",
+            chapter_id=chapter_artifact.chapter_id,
+            path=artifact.file_path,
+            duration_seconds=chapter_artifact.duration_seconds,
+            source_segments=chapter_artifact.source_segments,
+            content_hash=artifact.content_hash,
+        )
+
+    def _register_bytes(
+        self,
+        *,
+        build_request_id: str,
+        project_id: str,
+        chapter_id: str,
+        artifact_type: ArtifactType,
+        data: bytes,
+        path_prefix: str,
+        extension: str,
+    ) -> Artifact:
+        existing_versions = self._artifact_service.list_versions(project_id, artifact_type)
+        next_version = (existing_versions[0].version_number + 1) if existing_versions else 1
+
+        artifact_id = f"{build_request_id}-{artifact_type.value}-v{next_version:04d}"
+        destination_relative = f"{path_prefix}/{chapter_id}-v{next_version:04d}.{extension}"
+
+        fd, tmp_name = tempfile.mkstemp(prefix="build-pipeline-", suffix=f".{extension}")
+        tmp_path = Path(tmp_name)
+        try:
+            with open(fd, "wb") as tmp_file:
+                tmp_file.write(data)
+            return self._artifact_service.register(
+                RegisterArtifact(
+                    artifact_id=artifact_id,
+                    job_id=self._job_id,
+                    project_id=project_id,
+                    artifact_type=artifact_type,
+                    source_path=tmp_path,
+                    destination_relative=destination_relative,
+                )
+            )
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                tmp_path.unlink()

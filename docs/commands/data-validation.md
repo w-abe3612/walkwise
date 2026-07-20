@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
+version: '1.1'
 last_updated: '2026-07-19'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-19'
 related_tasks:
 - TASK-CORE-002
 - TASK-DOMAIN-001
@@ -43,11 +44,15 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_domain_models.py` — 現在のダンプでは欠落
-- `tests/test_domain_validation.py` — 現在のダンプでは欠落
-- `tests/test_hashing.py` — 現在のダンプでは欠落
-- `tests/test_identifiers.py` — 現在のダンプでは欠落
-- `tests/test_serialization.py` — 現在のダンプでは欠落
+- `tests/test_domain_models.py`
+- `tests/test_domain_validation.py`
+- `tests/test_hashing.py`
+- `tests/test_identifiers.py`
+- `tests/test_serialization.py`
+
+現在の存在有無・実装状態は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。
+`TASK-CORE-002`(hashing/identifiers/serialization、8 case)、`TASK-DOMAIN-001`
+(domain_models/domain_validation、9 case)はいずれも本実装済みでpassする。
 
 ## 5. 収集・型確認
 

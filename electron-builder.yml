@@ -1,5 +1,7 @@
 appId: local.walkwise.app
 productName: Walkwise
+directories:
+  output: release
 files:
   - dist/**
   - electron/**
@@ -7,7 +9,21 @@ files:
 extraResources:
   - from: runtime
     to: runtime
+  - from: resources/release-manifest.json
+    to: release-manifest.json
+# 23-distribution-and-platform-policy.md 5.1節: 初期対象はWindows x64のみ。
 win:
   target:
-    - nsis
-# STEP4 scaffold: signing, licenses, runtime inventory, and hardening are implemented in TASK-RELEASE-001.
+    - target: nsis
+      arch:
+        - x64
+  # 5.6節: 初期配布ではcode signingを必須にしない(未署名インストーラーの
+  # SmartScreen警告リスクはresources/release-manifest.jsonのcode_signingへ記録する)。
+  forceCodeSigning: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  # 5.8節: uninstallは利用者データ領域を自動削除しない。
+  deleteAppDataOnUninstall: false
+

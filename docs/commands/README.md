@@ -1,10 +1,10 @@
 ---
 document_type: command_directory_guide
 status: review
-version: "1.1"
-last_updated: "2026-07-19"
+version: "1.2"
+last_updated: "2026-07-20"
 generated_from_dump: "audio_book_creation_dump_2026-07-19_173616.txt"
-current_state_verified: "2026-07-19"
+current_state_verified: "2026-07-20"
 ---
 
 # Walkwise コマンド文書
@@ -50,11 +50,13 @@ test fileの現在の存在件数・欠落件数、pytest collection実測値、
 本書はコマンド文書全体の役割・実行原則・構成だけを固定し、揮発する存在件数を
 ここへ重複記載しない。
 
-- 全54タスクのうち、実装が完了しpassしているのは`TASK-DEV-001`のみである
-  (`docs/tasks/TASK-DEV-001-repository-and-test-baseline.md`)。他タスクはSTEP3/STEP4の
-  空実装(strict xfail / `NotImplementedError` / opt-in skip)のままである。
+- 全54タスクのうち53タスク(MVP対象50件+post-MVP対象3件)が実装完了し
+  passしている。残る`TASK-COEIR-001`のみ、公式API世代・endpoint・
+  話者識別子・利用条件が確認できるまで永久にblockedのままである。
 - 個別タスクの現在の欠落・完了状況を確認する場合は、必ず`CURRENT_STATE.md`の実測値を
-  読み、本書やタスク文書に残る過去のダンプ由来の数値を鵜呑みにしない。
+  読み、本書やタスク文書に残る過去のダンプ由来の数値を鵜呑みにしない
+  (この一節自体も含め、本書の数値は`CURRENT_STATE.md`の実測更新より
+  遅れうる)。
 
 ## 4. 文書構成
 

@@ -1,8 +1,8 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
 related_tasks:
 - TASK-RELEASE-002
@@ -40,8 +40,12 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/performance/test_large_sources.py` — 存在
-- `tests/resilience/test_failure_recovery.py` — 存在
+- `tests/performance/test_large_sources.py` — `TASK-RELEASE-002`完了。
+  TC-01,03,05,07,09(計5 case)、実測pass済み(2026-07-20)。
+- `tests/resilience/test_failure_recovery.py` — `TASK-RELEASE-002`完了。
+  TC-02,04,06,08,10(計5 case)、実測pass済み(2026-07-20)。
+- `release/checklist.md` — `TASK-RELEASE-002`完了。MVP code complete/実runtime未確認/
+  release判定を分離して記録済み。
 
 ## 5. 収集・型確認
 
@@ -106,7 +110,11 @@ npm test
 - 通常テストが外部接続しない。
 - STEP3空実装段階では、意図したstrict xfailまたはopt-in skipだけになる。
 - Claude Code本実装後は、対象タスクのxfailを解除し、対象テストがpassする。
-- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない。
+- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない
+  (2026-07-20実測: MVP対象50/50タスク完了、Python全体394 passed/23 deselected/
+  37 xfailed、Docker 387 passed+7 skipped=394でhost一致、npm run typecheck成功、
+  Vitest 73 passed/3 skipped)。`release/checklist.md`によりMVP code completeと
+  release ready(実runtime未確認のため現時点では未達)を分離して判定済み。
 
 ## 10. 停止条件
 

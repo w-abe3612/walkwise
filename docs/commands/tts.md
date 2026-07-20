@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-20'
 related_tasks:
 - TASK-TTS-001
 - TASK-VOICEVOX-001
@@ -25,8 +26,10 @@ STEP3/STEP4の空実装段階では、strict xfail・明示的未実装error・o
 
 ## 2. 関連タスク
 
-- `TASK-TTS-001` — TTS共通Protocol・registry・エラー契約（MVP）
+- `TASK-TTS-001` — TTS共通Protocol・registry・エラー契約（MVP、本実装済み）
   - 契約: `docs/test-cases/TASK-TTS-001-tts-client-interface-and-registry.md`
+  - production: `script/tts_clients/base.py`, `registry.py`, `models.py`
+  - 対象10 case(TC-TTS-001-01〜10)はすべてpassする。
 - `TASK-VOICEVOX-001` — VOICEVOX adapter・話者一覧・合成（MVP）
   - 契約: `docs/test-cases/TASK-VOICEVOX-001-voicevox-client-adapter.md`
 - `TASK-AUDIO-001` — 試聴・segment TTS・WAV cache（MVP）
@@ -53,17 +56,19 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `electron/renderer/tests/BuildSettings.test.ts` — 存在
-- `electron/tests/build_voice_ipc.test.ts` — 存在
-- `tests/test_audio_cache.py` — 現在のダンプでは欠落
-- `tests/test_audio_preview.py` — 現在のダンプでは欠落
-- `tests/test_audio_synthesis.py` — 現在のダンプでは欠落
-- `tests/test_coeiroink_adapter.py` — 現在のダンプでは欠落
-- `tests/test_coeiroink_client.py` — 現在のダンプでは欠落
-- `tests/test_tts_client_contract.py` — 現在のダンプでは欠落
-- `tests/test_tts_registry.py` — 現在のダンプでは欠落
-- `tests/test_voicevox_adapter.py` — 現在のダンプでは欠落
-- `tests/test_voicevox_client.py` — 現在のダンプでは欠落
+- `electron/renderer/tests/BuildSettings.test.ts`
+- `electron/tests/build_voice_ipc.test.ts`
+- `tests/test_audio_cache.py` — `TASK-AUDIO-001`未着手(STEP3のまま)
+- `tests/test_audio_preview.py` — `TASK-AUDIO-001`未着手(STEP3のまま)
+- `tests/test_audio_synthesis.py` — `TASK-AUDIO-001`未着手(STEP3のまま)
+- `tests/test_coeiroink_adapter.py` — `TASK-COEIR-001`はblocked、実装しない
+- `tests/test_coeiroink_client.py` — `TASK-COEIR-001`はblocked、実装しない
+- `tests/test_tts_client_contract.py` — `TASK-TTS-001`本実装済み(10 case pass)
+- `tests/test_tts_registry.py` — `TASK-TTS-001`本実装済み(10 case pass)
+- `tests/test_voicevox_adapter.py` — `TASK-VOICEVOX-001`未着手(STEP3のまま)
+- `tests/test_voicevox_client.py` — `TASK-VOICEVOX-001`未着手(STEP3のまま)
+
+現在の存在有無・pass状況は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。
 
 ## 5. 収集・型確認
 

@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-20'
 related_tasks:
 - TASK-CLAIM-001
 release_scopes:
@@ -20,8 +21,10 @@ STEP3/STEP4の空実装段階では、strict xfail・明示的未実装error・o
 
 ## 2. 関連タスク
 
-- `TASK-CLAIM-001` — 技術的主張・出典対応・fact check（MVP）
+- `TASK-CLAIM-001` — 技術的主張・出典対応・fact check（MVP、本実装済み）
   - 契約: `docs/test-cases/TASK-CLAIM-001-claims-evidence-and-fact-checking.md`
+  - production: `script/pipelines/claims.py`, `script/schemas/claims.py`
+  - 対象10 case(TC-CLAIM-001-01〜10)はすべてpassする。
 
 ## 3. 実行前提
 
@@ -40,8 +43,10 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_claim_validation.py` — 現在のダンプでは欠落
-- `tests/test_claims_pipeline.py` — 現在のダンプでは欠落
+- `tests/test_claim_validation.py`
+- `tests/test_claims_pipeline.py`
+
+現在の存在有無は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。
 
 ## 5. 収集・型確認
 

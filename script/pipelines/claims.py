@@ -1,79 +1,188 @@
-from __future__ import annotations
+"""script/pipelines/claims.py — 公開契約:
+ClaimPipeline.extract(script) -> list[Claim],
+ClaimPipeline.verify(claims, sources) -> FactCheckReport,
+assert_script_claims_publishable(script, claims) -> None.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/pipelines/claims.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-CLAIM-001
+Contract: docs/test-cases/TASK-CLAIM-001-claims-evidence-and-fact-checking.md
+Spec: docs/specifications/06-claims-and-sources.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-CLAIM-001', 'ClaimPipeline.extract(script) -> list[Claim]', '抽出結果はpendingで生成する。'),
-    ('TASK-CLAIM-001', 'ClaimPipeline.verify(claims, sources) -> FactCheckReport', 'evidenceと人間承認なしにverifiedへしない。'),
-    ('TASK-CLAIM-001', 'assert_script_claims_publishable(script, claims) -> None', 'unsupported/conflictを本番工程から遮断する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-CLAIM-001-01', 'priority': 'P0', 'layer': 'unit', 'title': '抽出初期状態', 'given': '技術文を含むscript', 'when': 'extract', 'then': '全claimはpending', 'test_file': '`tests/test_claims_pipeline.py`'},
-    {'id': 'TC-CLAIM-001-02', 'priority': 'P0', 'layer': 'unit', 'title': 'verified条件', 'given': 'source locatorあり・人間承認あり', 'when': 'verify', 'then': 'verified可能。AI出力のみでは不可', 'test_file': '`tests/test_claim_validation.py`'},
-    {'id': 'TC-CLAIM-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'conflict gate', 'given': 'conflict claimを含むscript', 'when': 'publishable確認', 'then': '本番TTS前に停止する', 'test_file': '`tests/test_claims_pipeline.py`'},
-    {'id': 'TC-CLAIM-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'economy抽出はpending', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`Claim/SourceEvidence/FactCheckReport`を通じて「economy抽出はpending」を実行する', 'then': '「economy抽出はpending」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_claim_validation.py`'},
-    {'id': 'TC-CLAIM-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'evidence mapping', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`Claim/SourceEvidence/FactCheckReport`を通じて「evidence mapping」を実行する', 'then': '「evidence mapping」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_claims_pipeline.py`'},
-    {'id': 'TC-CLAIM-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'source locator', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`Claim/SourceEvidence/FactCheckReport`を通じて「source locator」を実行する', 'then': '「source locator」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_claim_validation.py`'},
-    {'id': 'TC-CLAIM-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'unsupported block', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`Claim/SourceEvidence/FactCheckReport`を通じて「unsupported block」を実行する', 'then': '「unsupported block」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_claims_pipeline.py`'},
-    {'id': 'TC-CLAIM-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`Claim/SourceEvidence/FactCheckReport`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_claim_validation.py`'},
-    {'id': 'TC-CLAIM-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`Claim/SourceEvidence/FactCheckReport`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_claims_pipeline.py`'},
-    {'id': 'TC-CLAIM-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_claim_validation.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/pipelines/claims.py)")
+import dataclasses
+from collections.abc import Collection, Sequence
 
-class Claim:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+from script.ai.routing import AIRouter, ModelPolicy
+from script.ai_clients.base import AIClient, AIRequest
+from script.core.errors import AppError, ErrorCode
+from script.schemas.claims import Claim, ClaimStatus, ClaimType, FACTUAL_CLAIM_TYPES, FactCheckReport, SourceEvidence
+from script.schemas.script import ScriptDocument
 
-class FactCheckReport:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+_ECONOMY_MODEL_HINT = "gemini-2.5-flash-lite"
+_CLAIM_TYPE_PREFIX = "CLAIM_TYPE:"
+_STATEMENT_PREFIX = "STATEMENT:"
+_NO_CLAIM_MARKER = "NONE"
+
+# 05-script-segment-schema.md 7節のsegment_typeのうち、技術的事実を主張しないもの。
+_NON_FACTUAL_SEGMENT_TYPES = frozenset({"heading", "transition", "introduction", "summary", "question"})
+
+
+def _parse_claim_response(raw_text: str) -> tuple[ClaimType, str] | None:
+    """AI応答から`CLAIM_TYPE:`/`STATEMENT:`の2行形式を決定的に取り出す。`NONE`ならNoneを返す。"""
+    if raw_text.strip() == _NO_CLAIM_MARKER:
+        return None
+
+    claim_type_value: str | None = None
+    statement_lines: list[str] = []
+    in_statement = False
+
+    for line in raw_text.splitlines():
+        stripped = line.strip()
+        if not in_statement and stripped.startswith(_CLAIM_TYPE_PREFIX):
+            claim_type_value = stripped[len(_CLAIM_TYPE_PREFIX):].strip()
+        elif stripped.startswith(_STATEMENT_PREFIX):
+            in_statement = True
+            remainder = stripped[len(_STATEMENT_PREFIX):].strip()
+            if remainder:
+                statement_lines.append(remainder)
+        elif in_statement:
+            statement_lines.append(line)
+
+    statement = "\n".join(statement_lines).strip()
+    if not statement:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "AI claim response did not include STATEMENT content")
+
+    try:
+        claim_type = ClaimType(claim_type_value) if claim_type_value else ClaimType.TECHNICAL_FACT
+    except ValueError as exc:
+        raise AppError(ErrorCode.VALIDATION_ERROR, f"unknown claim_type in AI response: {claim_type_value}") from exc
+
+    return claim_type, statement
+
 
 class ClaimPipeline:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def extract(self, script: Any) -> list[Claim]:
-        """抽出結果はpendingで生成する。
+    """初稿から主張候補を抽出し(economy_structuring)、evidence/人間承認を反映してverifyする。"""
 
-        Public contract: ``ClaimPipeline.extract(script) -> list[Claim]``.
-        """
-        _step4_unimplemented('ClaimPipeline.extract')
-    def verify(self, claims: Any, sources: Any) -> FactCheckReport:
-        """evidenceと人間承認なしにverifiedへしない。
+    def __init__(
+        self,
+        *,
+        ai_client: AIClient,
+        extraction_model: str = _ECONOMY_MODEL_HINT,
+        router: AIRouter | None = None,
+        model_policy: ModelPolicy | None = None,
+    ) -> None:
+        if ai_client is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "ai_client is required")
+        if not extraction_model:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "extraction_model is required")
+        self._ai_client = ai_client
+        self._extraction_model = extraction_model
+        self._router = router
+        self._model_policy = model_policy
 
-        Public contract: ``ClaimPipeline.verify(claims, sources) -> FactCheckReport``.
-        """
-        _step4_unimplemented('ClaimPipeline.verify')
+    def extract(self, script: ScriptDocument) -> list[Claim]:
+        """抽出結果はpendingで生成する。"""
+        if script is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "script is required")
+        if not script.segments:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "script.segments must not be empty")
 
-def assert_script_claims_publishable(script: Any, claims: Any) -> None:
-    """unsupported/conflictを本番工程から遮断する。
+        claims: list[Claim] = []
+        for segment in script.segments:
+            if segment.segment_type in _NON_FACTUAL_SEGMENT_TYPES:
+                continue
 
-    Public contract: ``assert_script_claims_publishable(script, claims) -> None``.
-    """
-    _step4_unimplemented('assert_script_claims_publishable')
+            request = AIRequest(
+                user_text=segment.text,
+                system_instruction=(
+                    "Extract one technical claim candidate from this narration segment. "
+                    "Respond in exactly this format:\nCLAIM_TYPE: <claim type>\n"
+                    "STATEMENT: <statement text>\nOr respond exactly 'NONE' if there is no "
+                    "factual claim to extract."
+                ),
+                model=self._extraction_model,
+            )
+            result = self._ai_client.generate(request)
+            parsed = _parse_claim_response(result.text)
+            if parsed is None:
+                continue
+            claim_type, statement = parsed
+
+            claims.append(
+                Claim(
+                    claim_id=f"{segment.segment_id}-claim001",
+                    statement=statement,
+                    claim_type=claim_type,
+                    segment_id=segment.segment_id,
+                    status=ClaimStatus.PENDING,
+                    source_evidence=tuple(SourceEvidence(source_id=source_id) for source_id in segment.source_refs),
+                )
+            )
+
+        return claims
+
+    def verify(self, claims: Sequence[Claim], sources: Collection[str]) -> FactCheckReport:
+        """evidenceと人間承認なしにverifiedへしない。"""
+        if not claims:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "claims must not be empty")
+        if sources is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "sources is required")
+
+        known_source_ids = frozenset(sources)
+        resolved: list[Claim] = []
+
+        for claim in claims:
+            for evidence in claim.source_evidence:
+                if evidence.source_id not in known_source_ids:
+                    raise AppError(ErrorCode.VALIDATION_ERROR, f"unknown source_id referenced: {evidence.source_id}")
+
+            if claim.status is ClaimStatus.CONFLICT or claim.conflict is not None:
+                # 資料間矛盾は黙って解決しない。high_assurance未設定/未解決でも常にhuman review。
+                if self._router is not None and self._model_policy is not None:
+                    try:
+                        self._router.resolve("high_assurance_review", self._model_policy)
+                    except AppError:
+                        pass
+                resolved.append(dataclasses.replace(claim, status=ClaimStatus.HUMAN_REVIEW_REQUIRED))
+                continue
+
+            if claim.claim_type in FACTUAL_CLAIM_TYPES:
+                has_locator_evidence = any(evidence.locator is not None for evidence in claim.source_evidence)
+                if claim.verified_by_human and has_locator_evidence:
+                    resolved.append(dataclasses.replace(claim, status=ClaimStatus.VERIFIED))
+                elif claim.source_evidence:
+                    # AI由来のevidenceはあるが人間承認またはlocatorが欠けている: 黙って承認しない。
+                    resolved.append(dataclasses.replace(claim, status=ClaimStatus.HUMAN_REVIEW_REQUIRED))
+                else:
+                    resolved.append(dataclasses.replace(claim, status=ClaimStatus.UNSUPPORTED))
+            else:
+                # generated_analogy/generated_explanation/opinion: sourceは必須ではないが人間承認は必要。
+                if claim.verified_by_human:
+                    resolved.append(dataclasses.replace(claim, status=ClaimStatus.VERIFIED))
+                else:
+                    resolved.append(claim)
+
+        return FactCheckReport(claims=tuple(resolved))
+
+
+def assert_script_claims_publishable(script: ScriptDocument, claims: Sequence[Claim]) -> None:
+    """unsupported/conflictを本番工程から遮断する。"""
+    if script is None:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "script is required")
+    if claims is None:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "claims is required")
+
+    blocking_ids = [
+        claim.claim_id
+        for claim in claims
+        if not (
+            claim.status is ClaimStatus.VERIFIED
+            or (claim.status is ClaimStatus.PARTIALLY_VERIFIED and claim.verified_by_human)
+        )
+    ]
+
+    if blocking_ids:
+        raise AppError(
+            ErrorCode.CONFLICT,
+            f"unpublishable claims block production TTS: {', '.join(sorted(blocking_ids))}",
+        )

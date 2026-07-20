@@ -1,70 +1,96 @@
-from __future__ import annotations
+"""script/source_processing/images/manifest.py — 公開契約: ImageManifest/PageEntry/Locator, build_image_manifest.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/source_processing/images/manifest.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-IMAGE-001
+Contract: docs/test-cases/TASK-IMAGE-001-image-material-registration-and-manifest.md
+Spec: docs/specifications/image-material-ingestion.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-IMAGE-001', 'ImageManifest/PageEntry/Locator', 'page index、hash、原画像path、spread情報を保持する。'),
-    ('TASK-IMAGE-001', 'build_image_manifest(entries) -> dict', '重複indexを拒否しcanonical manifestを作る。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-IMAGE-001-01', 'priority': 'P0', 'layer': 'unit', 'title': '自然順', 'given': 'page1,page2,page10のファイル', 'when': 'ingestする', 'then': 'natural orderで1,2,10となる', 'test_file': '`tests/test_image_ingestion.py`'},
-    {'id': 'TC-IMAGE-001-02', 'priority': 'P0', 'layer': 'unit', 'title': '明示順', 'given': 'explicit orderを指定', 'when': 'ingestする', 'then': '指定順を採用し重複/欠落を拒否する', 'test_file': '`tests/test_image_manifest.py`'},
-    {'id': 'TC-IMAGE-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'EXIF privacy', 'given': '位置情報付きJPEG', 'when': 'manifest/exportを作る', 'then': '内部warningは保持しても公開成果物に位置情報を含めない', 'test_file': '`tests/test_image_ingestion.py`'},
-    {'id': 'TC-IMAGE-001-04', 'priority': 'P1', 'layer': 'unit', 'title': '形式検証', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult`を通じて「形式検証」を実行する', 'then': '正常値を受理し、仕様違反を副作用前に検出して具体的なerror codeを返す。', 'test_file': '`tests/test_image_manifest.py`'},
-    {'id': 'TC-IMAGE-001-05', 'priority': 'P1', 'layer': 'unit', 'title': '壊れた画像検出', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult`を通じて「壊れた画像検出」を実行する', 'then': '「壊れた画像検出」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_image_ingestion.py`'},
-    {'id': 'TC-IMAGE-001-06', 'priority': 'P1', 'layer': 'unit', 'title': '原画像immutable copy', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult`を通じて「原画像immutable copy」を実行する', 'then': '処理前後で入力ファイルのbyte列とSHA-256が一致し、派生物だけが新規作成される。', 'test_file': '`tests/test_image_manifest.py`'},
-    {'id': 'TC-IMAGE-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'hash', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult`を通じて「hash」を実行する', 'then': '同一の正規化入力から同一SHA-256を返し、内容差分があればhashが変化する。', 'test_file': '`tests/test_image_ingestion.py`'},
-    {'id': 'TC-IMAGE-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_image_manifest.py`'},
-    {'id': 'TC-IMAGE-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_image_ingestion.py`'},
-    {'id': 'TC-IMAGE-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_image_manifest.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/source_processing/images/manifest.py)")
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any
 
-class ImageManifest:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+from script.core.errors import AppError, ErrorCode
 
+
+@dataclass(frozen=True)
 class Locator:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """見開き分割等における元画像座標への参照(image-material-ingestion.md 10節)。"""
 
+    original_image_id: str
+    crop_x: int = 0
+    crop_y: int = 0
+    crop_width: int | None = None
+    crop_height: int | None = None
+    spread_side: str | None = None
+
+
+@dataclass(frozen=True)
 class PageEntry:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """manifest中の1ページ分の情報。"""
 
-def build_image_manifest(entries: Any) -> dict:
-    """重複indexを拒否しcanonical manifestを作る。
+    page_index: int
+    image_id: str
+    original_path: str
+    content_hash: str
+    locator: Locator | None = None
+    quality_flags: tuple[str, ...] = ()
 
-    Public contract: ``build_image_manifest(entries) -> dict``.
-    """
-    _step4_unimplemented('build_image_manifest')
+    def __post_init__(self) -> None:
+        if not self.image_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "image_id is required")
+        if not self.original_path:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "original_path is required")
+        if not self.content_hash:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "content_hash is required")
+
+
+@dataclass(frozen=True)
+class ImageManifest:
+    """canonical化済みの画像manifest本体。"""
+
+    pages: tuple[PageEntry, ...]
+
+
+def build_image_manifest(entries: Sequence[PageEntry]) -> dict[str, Any]:
+    """重複indexを拒否しcanonical manifestを作る。"""
+    if not entries:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "entries must not be empty")
+
+    seen_page_indexes: set[int] = set()
+    seen_image_ids: set[str] = set()
+    for entry in entries:
+        if entry.page_index in seen_page_indexes:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"duplicate page_index: {entry.page_index}")
+        if entry.image_id in seen_image_ids:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"duplicate image_id: {entry.image_id}")
+        seen_page_indexes.add(entry.page_index)
+        seen_image_ids.add(entry.image_id)
+
+    ordered = sorted(entries, key=lambda entry: entry.page_index)
+
+    return {
+        "schema_version": "1.0",
+        "pages": [
+            {
+                "page_index": entry.page_index,
+                "image_id": entry.image_id,
+                "original_path": entry.original_path,
+                "content_hash": entry.content_hash,
+                "locator": (
+                    {
+                        "original_image_id": entry.locator.original_image_id,
+                        "crop_x": entry.locator.crop_x,
+                        "crop_y": entry.locator.crop_y,
+                        "crop_width": entry.locator.crop_width,
+                        "crop_height": entry.locator.crop_height,
+                        "spread_side": entry.locator.spread_side,
+                    }
+                    if entry.locator is not None
+                    else None
+                ),
+                "quality_flags": list(entry.quality_flags),
+            }
+            for entry in ordered
+        ],
+    }

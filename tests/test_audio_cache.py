@@ -1,76 +1,133 @@
-"""STEP3 test scaffold for TASK-AUDIO-001: 試聴・segment TTS・WAV cache.
+"""STEP4 test implementation for TASK-AUDIO-001: partial regeneration / internal part split.
 
 Contract: docs/test-cases/TASK-AUDIO-001-preview-and-segment-tts-cache.md
 Release scope: MVP
-Planned production files:
-- script/audio/synthesis.py
-- script/audio/cache.py
-- script/audio/preview.py
-
-This file is the test-generation source of truth for the cases below.
-STEP3 intentionally imports no production module because STEP4 source
-scaffolds do not exist yet. Claude Code must replace each explicit
-failure with assertions without changing case IDs or contract meaning."""
+"""
 
 from __future__ import annotations
 
 import pytest
 
+from script.audio.cache import AudioCache
+from script.audio.synthesis import SegmentSynthesizer
+from script.core.errors import AppError
+from script.schemas.profiles import EngineIdentity, VoiceProfile, VoiceProfileStatus, VoiceSpeaker
+from script.schemas.script import ScriptDocument, ScriptSegment, SpeakerRef
+from script.tts_clients.models import EngineCapabilities, SynthesisRequest, SynthesisResult
+
 pytestmark = pytest.mark.mvp
 
+
+class _FakeTTSClient:
+    engine_name = "mock"
+
+    def __init__(self) -> None:
+        self.requests: list[SynthesisRequest] = []
+
+    def check_connectivity(self) -> bool:
+        return True
+
+    def get_capabilities(self) -> EngineCapabilities:
+        return EngineCapabilities(engine="mock")
+
+    def list_speakers(self) -> list:
+        return []
+
+    def synthesize(self, request: SynthesisRequest) -> SynthesisResult:
+        self.requests.append(request)
+        return SynthesisResult(
+            request_id=request.request_id,
+            engine=request.engine,
+            speaker_id=request.speaker_id,
+            output_path=request.output_path or f"mock/{request.request_id}.wav",
+            duration_seconds=round(max(0.1, len(request.text) * 0.05), 3),
+            sample_rate_hz=24000,
+            channels=1,
+        )
+
+
+def _speaker() -> SpeakerRef:
+    return SpeakerRef(character_id="neutral-explainer", role="explainer")
+
+
+def _voice_profile() -> VoiceProfile:
+    return VoiceProfile(
+        voice_profile_id="mock-voice-default",
+        engine="mock",
+        speaker=VoiceSpeaker(id="8"),
+        engine_identity=EngineIdentity(engine_version="0.1.0"),
+        status=VoiceProfileStatus.APPROVED,
+        audition_approved=True,
+    )
+
+
+def _script_with_texts(text_1: str, text_2: str) -> ScriptDocument:
+    segments = (
+        ScriptSegment(segment_id="ch01-seg001", order=1, speaker=_speaker(), segment_type="explanation", text=text_1),
+        ScriptSegment(segment_id="ch01-seg002", order=2, speaker=_speaker(), segment_type="explanation", text=text_2),
+    )
+    return ScriptDocument(project_id="proj-1", chapter_id="ch01", stage="verified", segments=segments)
+
+
 @pytest.mark.integration_mock
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-AUDIO-001-02 is not implemented")
 def test_tc_audio_001_02() -> None:
-    """TC-AUDIO-001-02 — 部分再生成
-    
-    Contract: docs/test-cases/TASK-AUDIO-001-preview-and-segment-tts-cache.md
-    Priority: P0
-    Layer: integration_mock
-    Given: 1segmentだけ変更
-    When: synthesize
-    Then: 対象segmentだけclientを呼ぶ
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-AUDIO-001-02")
+    """TC-AUDIO-001-02 — 部分再生成: 1segmentだけ変更したら対象segmentだけclientを呼ぶ。"""
+    client = _FakeTTSClient()
+    cache = AudioCache()
+    synthesizer = SegmentSynthesizer(tts_client=client, cache=cache)
+    profile = _voice_profile()
+
+    script_v1 = _script_with_texts("A loop repeats.", "It does not stop early.")
+    synthesizer.synthesize(script_v1, profile)
+    calls_after_first_run = len(client.requests)
+    assert calls_after_first_run == 2  # 1 part per segment
+
+    script_v2 = _script_with_texts("A loop repeats.", "It stops after N iterations.")  # seg002だけ変更
+    results_v2 = synthesizer.synthesize(script_v2, profile)
+
+    new_calls = client.requests[calls_after_first_run:]
+    assert len(new_calls) == 1
+    assert new_calls[0].request_id.startswith("ch01-seg002")
+
+    seg001_result = next(result for result in results_v2 if result.segment_id == "ch01-seg001")
+    assert seg001_result.cache_hit is True
+    seg002_result = next(result for result in results_v2 if result.segment_id == "ch01-seg002")
+    assert seg002_result.cache_hit is False
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-AUDIO-001-05 is not implemented")
 def test_tc_audio_001_05() -> None:
-    """TC-AUDIO-001-05 — 300文字超internal part
-    
-    Contract: docs/test-cases/TASK-AUDIO-001-preview-and-segment-tts-cache.md
-    Priority: P1
-    Layer: unit
-    Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-    When: `SegmentSynthesizer.synthesize(script, profile) -> list[SegmentAudio]`を通じて「300文字超internal part」を実行する
-    Then: 「300文字超internal part」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-AUDIO-001-05")
+    """TC-AUDIO-001-05 — 300文字超internal part: 長いsegmentは複数partへ分割される。"""
+    client = _FakeTTSClient()
+    synthesizer = SegmentSynthesizer(tts_client=client)
+    long_text = "これはテストの文章です。" * 40  # 300文字を大きく超える
+    script = _script_with_texts("short text", long_text)
+
+    results = synthesizer.synthesize(script, _voice_profile())
+
+    seg002_result = next(result for result in results if result.segment_id == "ch01-seg002")
+    assert len(seg002_result.parts) > 1
+    assert seg002_result.parts[0].part_id == "ch01-seg002-part001"
+    assert seg002_result.parts[1].part_id == "ch01-seg002-part002"
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-AUDIO-001-08 is not implemented")
 def test_tc_audio_001_08() -> None:
-    """TC-AUDIO-001-08 — 必須入力欠落
-    
-    Contract: docs/test-cases/TASK-AUDIO-001-preview-and-segment-tts-cache.md
-    Priority: P0
-    Layer: unit
-    Given: 主ID、必須path、必須設定のいずれかが欠落した入力
-    When: `SegmentSynthesizer.synthesize(script, profile) -> list[SegmentAudio]`を実行する
-    Then: 副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-AUDIO-001-08")
+    """TC-AUDIO-001-08 — 必須入力欠落: 副作用前に安定したvalidation errorを返す。"""
+    with pytest.raises(AppError):
+        SegmentSynthesizer(tts_client=None)  # type: ignore[arg-type]
+
+    client = _FakeTTSClient()
+    synthesizer = SegmentSynthesizer(tts_client=client)
+    profile = _voice_profile()
+
+    with pytest.raises(AppError):
+        synthesizer.synthesize(None, profile)  # type: ignore[arg-type]
+
+    with pytest.raises(AppError):
+        synthesizer.synthesize(_script_with_texts("a", "b"), None)  # type: ignore[arg-type]
+
+    with pytest.raises(AppError):
+        AudioCache().key(text="", tts_text=None, voice_profile_id="v1", voice_content_hash="hash")
+
+    assert client.requests == []

@@ -1,8 +1,8 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
 related_tasks:
 - TASK-M4B-001
@@ -40,7 +40,9 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_m4b_output.py` — 現在のダンプでは欠落
+- `tests/test_m4b_output.py` — `TASK-M4B-001`完了。TC-01,03,04,05,06,07,08
+  (計7 case)、実測pass済み(2026-07-20)。TC-09(integration_smoke)/
+  TC-02,10(integration_live)は`FFMPEG_PATH`未設定のため既定skip。
 
 ## 5. 収集・型確認
 
@@ -107,7 +109,10 @@ npm test
 - 通常テストが外部接続しない。
 - STEP3空実装段階では、意図したstrict xfailまたはopt-in skipだけになる。
 - Claude Code本実装後は、対象タスクのxfailを解除し、対象テストがpassする。
-- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない。
+- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない
+  (2026-07-20実測: 対象10 case中7 case実測pass(TC-02,09,10は既定skip)、
+  Python全体411 passed/23 deselected/20 xfailed、npm run typecheck成功、
+  Vitest 73 passed/3 skipped)。
 
 ## 10. 停止条件
 

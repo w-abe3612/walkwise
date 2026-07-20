@@ -1,9 +1,8 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
-generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+version: '1.1'
+last_updated: '2026-07-20'
 related_tasks:
 - TASK-WORKER-001
 - TASK-WORKER-002
@@ -43,10 +42,10 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_worker_cancellation.py` — 現在のダンプでは欠落
-- `tests/test_worker_dispatch.py` — 現在のダンプでは欠落
-- `tests/test_worker_protocol.py` — 現在のダンプでは欠落
-- `tests/test_worker_runtime_failures.py` — 現在のダンプでは欠落
+- `tests/test_worker_dispatch.py` — `TASK-WORKER-001`完了。TC-02, TC-04, TC-06, TC-08, TC-10(計5 case)、実測pass済み(2026-07-20)。
+- `tests/test_worker_protocol.py` — `TASK-WORKER-001`完了。TC-01, TC-03, TC-05, TC-07, TC-09(計5 case)、実測pass済み(2026-07-20)。
+- `tests/test_worker_cancellation.py` — `TASK-WORKER-002`未着手。STEP3 strict xfailのまま。
+- `tests/test_worker_runtime_failures.py` — `TASK-WORKER-002`未着手。STEP3 strict xfailのまま。
 
 ## 5. 収集・型確認
 
@@ -89,9 +88,10 @@ npm test
 - 対象test fileがすべて収集される。
 - 未知marker、import error、TypeScript型errorがない。
 - 通常テストが外部接続しない。
-- STEP3空実装段階では、意図したstrict xfailまたはopt-in skipだけになる。
-- Claude Code本実装後は、対象タスクのxfailを解除し、対象テストがpassする。
-- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない。
+- `TASK-WORKER-001`の対象10 caseはpass済み(2026-07-20実測)。`TASK-WORKER-002`は
+  STEP3空実装段階のままであり、意図したstrict xfailだけになる。
+- 対象テスト成功後に全体回帰を実行し、既存タスクを壊していない
+  (2026-07-20実測: 346 passed, 23 deselected, 85 xfailed、予期しないfailなし)。
 
 ## 10. 停止条件
 

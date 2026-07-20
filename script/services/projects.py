@@ -1,75 +1,131 @@
-from __future__ import annotations
+"""script/services/projects.py — 公開契約: ProjectService.create/list_active/get.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/services/projects.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-PROJECT-001
+Contract: docs/test-cases/TASK-PROJECT-001-project-application-service.md
+Spec: docs/screens/01-project-list-and-create.md, docs/db/01-projects-table.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-PROJECT-001', 'ProjectService.create(command: CreateProject) -> Project', 'Project root、project-plan.yaml、DB行を一transactionで作成する。'),
-    ('TASK-PROJECT-001', 'ProjectService.list_active() -> list[Project]', 'archive済みを除き安定順で返す。'),
-    ('TASK-PROJECT-001', 'ProjectService.get(project_id: str) -> Project', '存在しないIDはnot_foundへ変換する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-PROJECT-001-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'Project作成atomicity', 'given': '有効入力', 'when': 'createする', 'then': 'plan fileとDB行が同じproject_id/revisionで作成される', 'test_file': '`tests/test_project_service.py`'},
-    {'id': 'TC-PROJECT-001-02', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'DB失敗cleanup', 'given': 'file作成後のDB insertを失敗させる', 'when': 'createする', 'then': '不完全Projectを一覧へ出さずcleanup/rollbackする', 'test_file': '`tests/test_project_plan_schema.py`'},
-    {'id': 'TC-PROJECT-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'archive除外', 'given': 'activeとarchived Projectがある', 'when': 'list_activeする', 'then': 'activeだけを返す', 'test_file': '`tests/test_project_service.py`'},
-    {'id': 'TC-PROJECT-001-04', 'priority': 'P1', 'layer': 'unit', 'title': '入力validation', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ProjectPlan.from_mapping()/to_mapping()/validate()`を通じて「入力validation」を実行する', 'then': '正常値を受理し、仕様違反を副作用前に検出して具体的なerror codeを返す。', 'test_file': '`tests/test_project_plan_schema.py`'},
-    {'id': 'TC-PROJECT-001-05', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`ProjectPlan.from_mapping()/to_mapping()/validate()`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_project_service.py`'},
-    {'id': 'TC-PROJECT-001-06', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`ProjectPlan.from_mapping()/to_mapping()/validate()`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_project_plan_schema.py`'},
-    {'id': 'TC-PROJECT-001-07', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_project_service.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/services/projects.py)")
+import sqlite3
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 
+from script.core.errors import AppError, ErrorCode
+from script.core.serialization import dump_yaml
+from script.domain.enums import PlanningStage
+from script.domain.models import Project
+from script.persistence.paths import ProjectPaths
+from script.persistence.repositories import ProjectRepository
+from script.persistence.unit_of_work import SqliteUnitOfWork
+from script.schemas.project_plan import ProjectPlan
+
+_PLAN_RELATIVE_PATH = "project/project-plan.yaml"
+
+
+@dataclass(frozen=True)
 class CreateProject:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """Project作成の入力。"""
 
-class Project:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    project_id: str
+    title: str
+    domain: str
+    purpose: str
+    usage_purpose: str = "personal_learning"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _default_plan_mapping(command: CreateProject) -> dict:
+    return {
+        "schema_version": "1.0",
+        "project_id": command.project_id,
+        "content_revision": 1,
+        "title": command.title,
+        "domain": command.domain,
+        "purpose": command.purpose,
+        "usage_purpose": command.usage_purpose,
+        "planning_stage": "registered",
+        "target_audience": {"description": ""},
+        "difficulty": {"vocabulary_level": "elementary_4", "conceptual_level": "adult_beginner"},
+        "scope": {"included_topics": [], "excluded_topics": []},
+        "source_strategy": ["hybrid_reconstruction"],
+        "chapters": [],
+        "source_policy": {
+            "technical_claims_require_sources": True,
+            "ai_general_knowledge_allowed_for_ideation": True,
+            "ai_generated_analogies_allowed": True,
+            "unsupported_claim_policy": "block",
+        },
+        "narration": {
+            "mode": "single_speaker_per_chapter",
+            "multi_speaker_schema_supported": True,
+            "voice_selection_status": "pending",
+            "default_character_id": None,
+            "default_voice_profile_id": None,
+        },
+        "approval_policy": {
+            "required": ["materials_curriculum", "planning", "verified_script", "preview_audio"],
+        },
+    }
+
 
 class ProjectService:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
+    """Project root、project-plan.yaml、DB行を一transactionで作成・一覧・取得する。"""
+
+    def __init__(self, data_root: Path, connection: sqlite3.Connection) -> None:
+        if not data_root or connection is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "data_root and connection are required")
+        self._data_root = Path(data_root)
+        self._connection = connection
+
     def create(self, command: CreateProject) -> Project:
-        """Project root、project-plan.yaml、DB行を一transactionで作成する。
+        """Project root、project-plan.yaml、DB行を一transactionで作成する。"""
+        if command is None or not command.project_id or not command.title:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id and title are required")
 
-        Public contract: ``ProjectService.create(command: CreateProject) -> Project``.
-        """
-        _step4_unimplemented('ProjectService.create')
+        if ProjectRepository(self._connection).find(command.project_id) is not None:
+            raise AppError(ErrorCode.CONFLICT, f"project already exists: {command.project_id}")
+
+        paths = ProjectPaths.for_root(self._data_root, command.project_id)
+        plan = ProjectPlan.from_mapping(_default_plan_mapping(command))
+
+        plan_file_path = paths.resolve_relative(_PLAN_RELATIVE_PATH)
+        dump_yaml(plan_file_path, plan.to_mapping())
+
+        now = _now_iso()
+        project = Project(
+            project_id=command.project_id,
+            title=command.title,
+            domain=command.domain,
+            planning_stage=PlanningStage.REGISTERED,
+            content_revision=1,
+            plan_file_path=_PLAN_RELATIVE_PATH,
+            created_at=now,
+            updated_at=now,
+        )
+
+        try:
+            with SqliteUnitOfWork(self._connection) as uow:
+                uow.projects.insert(project)
+        except AppError:
+            if plan_file_path.exists():
+                plan_file_path.unlink()
+            raise
+
+        return project
+
     def list_active(self) -> list[Project]:
-        """archive済みを除き安定順で返す。
+        """archive済みを除き安定順で返す。"""
+        repository = ProjectRepository(self._connection)
+        return [project for project in repository.list_all() if project.archived_at is None]
 
-        Public contract: ``ProjectService.list_active() -> list[Project]``.
-        """
-        _step4_unimplemented('ProjectService.list_active')
     def get(self, project_id: str) -> Project:
-        """存在しないIDはnot_foundへ変換する。
-
-        Public contract: ``ProjectService.get(project_id: str) -> Project``.
-        """
-        _step4_unimplemented('ProjectService.get')
+        """存在しないIDはnot_foundへ変換する。"""
+        repository = ProjectRepository(self._connection)
+        project = repository.find(project_id)
+        if project is None:
+            raise AppError(ErrorCode.NOT_FOUND, f"project not found: {project_id}")
+        return project

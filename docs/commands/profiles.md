@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-20'
 related_tasks:
 - TASK-PROFILE-001
 release_scopes:
@@ -20,8 +21,14 @@ STEP3/STEP4の空実装段階では、strict xfail・明示的未実装error・o
 
 ## 2. 関連タスク
 
-- `TASK-PROFILE-001` — Character・Voice profile読込と選択（MVP）
+- `TASK-PROFILE-001` — Character・Voice profile読込と選択（MVP、本実装済み）
   - 契約: `docs/test-cases/TASK-PROFILE-001-character-and-voice-profiles.md`
+  - production: `script/profiles/characters.py`, `script/profiles/voices.py`, `script/schemas/profiles.py`
+  - 対象9 case(TC-PROFILE-001-01〜09)はすべてpassする。
+  - 話者ごとの最終速度・音量・無音時間・採用スタイルの確定は
+    `docs/spec-proposals/task/3_voice-profile-default-values.md`(status: draft、未承認)の
+    責務であり本タスクの対象外。COEIROINKは`TASK-COEIR-001`が永久にblockedのため、
+    MVPの`list_available()`はVOICEVOXの承認済みprofileだけを返す。
 
 ## 3. 実行前提
 
@@ -40,8 +47,10 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_character_profiles.py` — 現在のダンプでは欠落
-- `tests/test_voice_profiles.py` — 現在のダンプでは欠落
+- `tests/test_character_profiles.py`
+- `tests/test_voice_profiles.py`
+
+現在の存在有無は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。
 
 ## 5. 収集・型確認
 

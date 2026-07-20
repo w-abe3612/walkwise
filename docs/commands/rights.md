@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
+version: '1.1'
 last_updated: '2026-07-19'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-19'
 related_tasks:
 - TASK-RIGHTS-001
 release_scopes:
@@ -40,8 +41,11 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_credit_manifest.py` — 現在のダンプでは欠落
-- `tests/test_rights_gate.py` — 現在のダンプでは欠落
+- `tests/test_credit_manifest.py`
+- `tests/test_rights_gate.py`
+
+現在の存在有無は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。`TASK-RIGHTS-001`は
+本実装済みであり、対象10ケース(TC-RIGHTS-001-01〜10)はpassする。
 
 ## 5. 収集・型確認
 

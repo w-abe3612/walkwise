@@ -1,30 +1,113 @@
-/** STEP4 typed source scaffold for electron/main/ipc/jobs.ts.
- * Public bodies intentionally throw until Claude Code implements the task.
+/**
+ * electron/main/ipc/jobs.ts — 公開契約: job:get/subscribe/cancel handlers.
+ *
+ * Contract: docs/test-cases/TASK-UI-004-job-progress-and-artifacts-screens.md
+ * Spec: docs/screens/04-job-progress.md(7, 8節),
+ *       docs/specifications/22-job-lifecycle-and-recovery.md
+ *
+ * `job:start`(再試行payload `{parentJobId}`)は、`electron/main/ipc/builds.ts`の
+ * `job:start`(新規Job起動payload)と同一channel名を共有するため、本モジュールでは
+ * 登録しない(TASK-RELEASE-002でIPC channel重複を解消。詳細は
+ * docs/notes/implementation_assumptions.md参照)。`registerBuildIpcHandlers`へ
+ * `jobService`を注入することで、同一ipcMain上で両payload形状を1つのhandlerが処理する。
  */
 
-export type Step4ContractEntry = Readonly<{ taskId: string; symbol: string; contract: string }>;
-export type Step4TestCase = Readonly<{ id: string; priority: string; layer: string; title: string; given: string; when: string; then: string; testFile: string }>;
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancel_requested" | "cancelled";
 
-export const STEP4_PUBLIC_CONTRACTS: readonly Step4ContractEntry[] = [
-  { taskId: "TASK-UI-004", symbol: "job:get/subscribe/cancel/retry handlers", contract: "\u5408\u6cd5\u72b6\u614b\u3060\u3051\u3092\u64cd\u4f5c\u3057\u9032\u6357event\u3092\u8cfc\u8aad\u914d\u4fe1\u3059\u308b\u3002" },
-];
-
-export const STEP4_TEST_CASES: readonly Step4TestCase[] = [
-  {"id": "TC-UI-004-01", "priority": "P0", "layer": "unit", "title": "cancel確認", "given": "running Job", "when": "cancel click", "then": "確認後だけIPCを呼ぶ", "testFile": "`electron/tests/job_artifact_ipc.test.ts`"},
-  {"id": "TC-UI-004-02", "priority": "P0", "layer": "unit", "title": "retry条件", "given": "failed/cancelled/other", "when": "render", "then": "前2つだけretry可能", "testFile": "`electron/renderer/tests/JobsAndArtifacts.test.ts`"},
-  {"id": "TC-UI-004-03", "priority": "P0", "layer": "unit", "title": "最新Artifact", "given": "複数version", "when": "render", "then": "最新を既定表示し旧versionを破壊しない", "testFile": "`electron/tests/job_artifact_ipc.test.ts`"},
-  {"id": "TC-UI-004-04", "priority": "P1", "layer": "unit", "title": "job:get/subscribe/cancel/start retry", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`job:get/subscribe/cancel/retry handlers`を通じて「job:get/subscribe/cancel/start retry」を実行する", "then": "再試行可能errorだけを上限回数内で再試行し、同一requestの成果物を重複登録しない。", "testFile": "`electron/renderer/tests/JobsAndArtifacts.test.ts`"},
-  {"id": "TC-UI-004-05", "priority": "P1", "layer": "unit", "title": "状態別button", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`job:get/subscribe/cancel/retry handlers`を通じて「状態別button」を実行する", "then": "承認済み状態遷移表にある遷移だけが成功し、不正遷移では永続状態を変更しない。", "testFile": "`electron/tests/job_artifact_ipc.test.ts`"},
-  {"id": "TC-UI-004-06", "priority": "P1", "layer": "unit", "title": "stale注記", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`job:get/subscribe/cancel/retry handlers`を通じて「stale注記」を実行する", "then": "「stale注記」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/renderer/tests/JobsAndArtifacts.test.ts`"},
-  {"id": "TC-UI-004-07", "priority": "P1", "layer": "unit", "title": "技術detail折畳み", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`job:get/subscribe/cancel/retry handlers`を通じて「技術detail折畳み」を実行する", "then": "「技術detail折畳み」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/tests/job_artifact_ipc.test.ts`"},
-  {"id": "TC-UI-004-08", "priority": "P0", "layer": "unit", "title": "必須入力欠落", "given": "主ID、必須path、必須設定のいずれかが欠落した入力", "when": "`job:get/subscribe/cancel/retry handlers`を実行する", "then": "副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。", "testFile": "`electron/renderer/tests/JobsAndArtifacts.test.ts`"},
-  {"id": "TC-UI-004-09", "priority": "P1", "layer": "unit", "title": "再実行時の決定性", "given": "同じ入力、同じ設定、同じ依存応答", "when": "`job:get/subscribe/cancel/retry handlers`を2回実行する", "then": "仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。", "testFile": "`electron/tests/job_artifact_ipc.test.ts`"},
-];
-
-function step4Unimplemented(symbol: string): never {
-  throw new Error(`STEP4 source scaffold is not implemented: ${symbol} (electron/main/ipc/jobs.ts)`);
+export interface JobSummary {
+  readonly jobId: string;
+  readonly buildRequestId: string;
+  readonly jobType: string;
+  readonly status: JobStatus;
+  readonly progressCurrent?: number;
+  readonly progressTotal?: number;
+  readonly lastMessage?: string;
+  /** 22-job-lifecycle-and-recovery.md 5.6節: stale job検出でfailedになった場合true。 */
+  readonly stale?: boolean;
 }
 
-export function registerJobIpcHandlers(..._args: readonly unknown[]): unknown {
-  return step4Unimplemented("registerJobIpcHandlers");
+export interface ProgressEvent {
+  readonly jobId: string;
+  readonly current: number;
+  readonly total: number;
+  readonly message?: string;
+}
+
+export interface JobServiceLike {
+  get(jobId: string): Promise<JobSummary>;
+  subscribeProgress(jobId: string, listener: (event: ProgressEvent) => void): () => void;
+  cancel(jobId: string): Promise<JobSummary>;
+  /** 失敗Jobを上書きせず、parent_job_idを保持した新規Jobとして再試行する(5.4節)。 */
+  retry(parentJobId: string): Promise<JobSummary>;
+}
+
+export class JobValidationError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+export interface IpcMainInvokeEventLike {
+  readonly sender: { send(channel: string, ...args: unknown[]): void };
+}
+
+export interface IpcMainLike {
+  handle(channel: string, listener: (event: IpcMainInvokeEventLike, ...args: unknown[]) => unknown): void;
+}
+
+export interface JobIpcContext {
+  readonly ipcMain: IpcMainLike;
+  readonly jobService: JobServiceLike;
+}
+
+/** 04-job-progress.md 8節: cancelはqueued/runningのみ許可する。 */
+const CANCELLABLE_STATUSES = new Set<JobStatus>(["queued", "running"]);
+/** 04-job-progress.md 8節: 再試行はfailed/cancelledのみ許可する。
+ * `job:start`(再試行payload)を発行する`electron/main/ipc/builds.ts`からも
+ * 同じ判定を再利用するため公開する(TASK-RELEASE-002で解消したjob:start重複登録の一部)。 */
+export const RETRYABLE_STATUSES = new Set<JobStatus>(["failed", "cancelled"]);
+
+function requireJobId(raw: unknown): string {
+  if (typeof raw !== "string" || !raw.trim()) {
+    throw new JobValidationError("validation_error", "jobId is required");
+  }
+  return raw.trim();
+}
+
+/** 合法状態だけを操作し進捗eventを購読配信する。 */
+export function registerJobIpcHandlers(context: JobIpcContext): void {
+  if (!context) {
+    throw new Error("context is required");
+  }
+  if (!context.ipcMain) {
+    throw new Error("ipcMain is required");
+  }
+  if (!context.jobService) {
+    throw new Error("jobService is required");
+  }
+
+  context.ipcMain.handle("job:get", async (_event, rawJobId: unknown) => {
+    const jobId = requireJobId(rawJobId);
+    return context.jobService.get(jobId);
+  });
+
+  context.ipcMain.handle("job:subscribe-progress", (event, rawJobId: unknown) => {
+    const jobId = requireJobId(rawJobId);
+    return context.jobService.subscribeProgress(jobId, (progress) => {
+      event.sender.send("job:progress-event", progress);
+    });
+  });
+
+  context.ipcMain.handle("job:cancel", async (_event, rawJobId: unknown) => {
+    const jobId = requireJobId(rawJobId);
+    const job = await context.jobService.get(jobId);
+    if (!CANCELLABLE_STATUSES.has(job.status)) {
+      // 不正遷移: 永続状態を一切変更せず安定errorで停止する。
+      throw new JobValidationError("invalid_job_transition", `job ${jobId} is not cancellable from status ${job.status}`);
+    }
+    return context.jobService.cancel(jobId);
+  });
 }

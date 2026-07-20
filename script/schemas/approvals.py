@@ -1,62 +1,206 @@
-from __future__ import annotations
+"""script/schemas/approvals.py — 公開契約: ApprovalBundle/ApprovalRecord/ChangeRequest.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/schemas/approvals.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-APPROVAL-001
+Contract: docs/test-cases/TASK-APPROVAL-001-approval-workflow-and-invalidation.md
+Spec: docs/specifications/07-approval-workflow.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-APPROVAL-001', 'ApprovalBundle/ApprovalRecord/ChangeRequest', '4承認地点と対象hashを型付けする。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-APPROVAL-001-01', 'priority': 'P0', 'layer': 'unit', 'title': '4gate', 'given': '4承認がすべてcurrent hashでapproved', 'when': 'assert_gateを行う', 'then': '該当後工程を許可する', 'test_file': '`tests/test_approval_workflow.py`'},
-    {'id': 'TC-APPROVAL-001-02', 'priority': 'P0', 'layer': 'unit', 'title': '変更による無効化', 'given': 'approved対象のhashを変更', 'when': 'invalidateを行う', 'then': '関連承認だけinvalidatedにする', 'test_file': '`tests/test_approval_invalidation.py`'},
-    {'id': 'TC-APPROVAL-001-03', 'priority': 'P0', 'layer': 'unit', 'title': '差し戻し理由', 'given': '理由空でrequest_changes', 'when': '実行する', 'then': '拒否し状態を変えない', 'test_file': '`tests/test_approval_workflow.py`'},
-    {'id': 'TC-APPROVAL-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'approvals.yaml load/save', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ApprovalBundle/ApprovalRecord/ChangeRequest`を通じて「approvals.yaml load/save」を実行する', 'then': '必要な承認が揃う場合だけ後工程へ進み、未承認・invalidated・changes_requestedでは安定errorで停止する。', 'test_file': '`tests/test_approval_invalidation.py`'},
-    {'id': 'TC-APPROVAL-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'bundle hash', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ApprovalBundle/ApprovalRecord/ChangeRequest`を通じて「bundle hash」を実行する', 'then': '同一の正規化入力から同一SHA-256を返し、内容差分があればhashが変化する。', 'test_file': '`tests/test_approval_workflow.py`'},
-    {'id': 'TC-APPROVAL-001-06', 'priority': 'P1', 'layer': 'unit', 'title': '合法な状態遷移', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ApprovalBundle/ApprovalRecord/ChangeRequest`を通じて「合法な状態遷移」を実行する', 'then': '承認済み状態遷移表にある遷移だけが成功し、不正遷移では永続状態を変更しない。', 'test_file': '`tests/test_approval_invalidation.py`'},
-    {'id': 'TC-APPROVAL-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'change request', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ApprovalBundle/ApprovalRecord/ChangeRequest`を通じて「change request」を実行する', 'then': '「change request」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_approval_workflow.py`'},
-    {'id': 'TC-APPROVAL-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`ApprovalBundle/ApprovalRecord/ChangeRequest`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_approval_invalidation.py`'},
-    {'id': 'TC-APPROVAL-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`ApprovalBundle/ApprovalRecord/ChangeRequest`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_approval_workflow.py`'},
-    {'id': 'TC-APPROVAL-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_approval_invalidation.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/schemas/approvals.py)")
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
 
-class ApprovalBundle:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+from script.core.errors import AppError, ErrorCode
+from script.core.hashing import canonical_sha256
 
+
+class ApprovalGate(str, Enum):
+    MATERIALS_CURRICULUM = "materials_curriculum"
+    PLANNING = "planning"
+    VERIFIED_SCRIPT = "verified_script"
+    PREVIEW_AUDIO = "preview_audio"
+
+
+class ApprovalStatus(str, Enum):
+    DRAFT = "draft"
+    REVIEW_PENDING = "review_pending"
+    APPROVED = "approved"
+    CHANGES_REQUESTED = "changes_requested"
+    REVISED = "revised"
+    REJECTED = "rejected"
+    INVALIDATED = "invalidated"
+
+
+# docs/specifications/07-approval-workflow.md 4節 基本遷移
+_TRANSITIONS: dict[ApprovalStatus, frozenset[ApprovalStatus]] = {
+    ApprovalStatus.DRAFT: frozenset({ApprovalStatus.REVIEW_PENDING}),
+    ApprovalStatus.REVIEW_PENDING: frozenset(
+        {ApprovalStatus.APPROVED, ApprovalStatus.CHANGES_REQUESTED, ApprovalStatus.REJECTED}
+    ),
+    ApprovalStatus.CHANGES_REQUESTED: frozenset({ApprovalStatus.REVISED}),
+    ApprovalStatus.REVISED: frozenset({ApprovalStatus.REVIEW_PENDING}),
+    ApprovalStatus.APPROVED: frozenset({ApprovalStatus.INVALIDATED}),
+    ApprovalStatus.REJECTED: frozenset(),
+    ApprovalStatus.INVALIDATED: frozenset(),
+}
+
+
+def can_transition_approval(current: ApprovalStatus, target: ApprovalStatus) -> bool:
+    if current is None or target is None:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "current and target are required")
+    return target in _TRANSITIONS.get(current, frozenset())
+
+
+def compute_bundle_hash(paths: Sequence[str], file_hashes: Sequence[str]) -> str:
+    """対象パス・各ファイルhash・順序をcanonical化してbundle hashを計算する。"""
+    if not paths or len(paths) != len(file_hashes):
+        raise AppError(ErrorCode.VALIDATION_ERROR, "paths and file_hashes must be equal-length and non-empty")
+    return canonical_sha256({"paths": list(paths), "file_hashes": list(file_hashes)})
+
+
+@dataclass(frozen=True)
+class ApprovalTarget:
+    """承認対象(単一fileまたはbundle)。"""
+
+    paths: tuple[str, ...]
+    content_hash: str
+
+    def __post_init__(self) -> None:
+        if not self.paths:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "target paths must not be empty")
+        if not self.content_hash:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "target content_hash is required")
+
+
+@dataclass(frozen=True)
 class ApprovalRecord:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """4承認地点のうち1件の状態。"""
 
+    approval_id: str
+    gate: ApprovalGate
+    status: ApprovalStatus
+    target: ApprovalTarget | None = None
+    approved_by: str | None = None
+    approved_at: str | None = None
+    comment: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.approval_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "approval_id is required")
+        if self.status is ApprovalStatus.APPROVED and (
+            self.target is None or not self.approved_by or not self.approved_at
+        ):
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                "approved status requires target, approved_by and approved_at",
+            )
+
+
+@dataclass(frozen=True)
 class ChangeRequest:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """差し戻し(change request)。"""
+
+    request_id: str
+    gate: ApprovalGate
+    category: str
+    severity: str
+    comment: str
+    status: str = "open"
+
+    def __post_init__(self) -> None:
+        if not self.request_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "request_id is required")
+        if not self.comment or not self.comment.strip():
+            raise AppError(ErrorCode.VALIDATION_ERROR, "change request comment is required")
+
+
+def _default_record(gate: ApprovalGate) -> ApprovalRecord:
+    return ApprovalRecord(approval_id=f"approval-{gate.value}-draft", gate=gate, status=ApprovalStatus.DRAFT)
+
+
+@dataclass(frozen=True)
+class ApprovalBundle:
+    """project/approvals.yamlの内容(4承認地点)。"""
+
+    project_id: str
+    content_revision: int
+    approvals: Mapping[ApprovalGate, ApprovalRecord]
+
+    def __post_init__(self) -> None:
+        if not self.project_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id is required")
+        missing = [gate for gate in ApprovalGate if gate not in self.approvals]
+        if missing:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                f"missing required approval gate(s): {[gate.value for gate in missing]}",
+            )
+
+    @classmethod
+    def empty(cls, project_id: str, content_revision: int = 1) -> "ApprovalBundle":
+        return cls(
+            project_id=project_id,
+            content_revision=content_revision,
+            approvals={gate: _default_record(gate) for gate in ApprovalGate},
+        )
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any]) -> "ApprovalBundle":
+        if not mapping or "project_id" not in mapping:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id is required")
+
+        approvals_data = mapping.get("approvals", {})
+        approvals: dict[ApprovalGate, ApprovalRecord] = {}
+        for gate in ApprovalGate:
+            entry = approvals_data.get(gate.value)
+            if not entry:
+                approvals[gate] = _default_record(gate)
+                continue
+            target_data = entry.get("target")
+            target = (
+                ApprovalTarget(paths=tuple(target_data["paths"]), content_hash=target_data["content_hash"])
+                if target_data
+                else None
+            )
+            approvals[gate] = ApprovalRecord(
+                approval_id=entry["approval_id"],
+                gate=gate,
+                status=ApprovalStatus(entry["status"]),
+                target=target,
+                approved_by=entry.get("approved_by"),
+                approved_at=entry.get("approved_at"),
+                comment=entry.get("comment"),
+            )
+
+        return cls(
+            project_id=mapping["project_id"],
+            content_revision=mapping.get("content_revision", 1),
+            approvals=approvals,
+        )
+
+    def to_mapping(self) -> dict[str, Any]:
+        approvals_mapping: dict[str, Any] = {}
+        for gate, record in self.approvals.items():
+            entry: dict[str, Any] = {
+                "approval_id": record.approval_id,
+                "status": record.status.value,
+                "approved_by": record.approved_by,
+                "approved_at": record.approved_at,
+                "comment": record.comment,
+            }
+            if record.target is not None:
+                entry["target"] = {"paths": list(record.target.paths), "content_hash": record.target.content_hash}
+            approvals_mapping[gate.value] = entry
+
+        return {
+            "schema_version": "1.0",
+            "project_id": self.project_id,
+            "content_revision": self.content_revision,
+            "approvals": approvals_mapping,
+        }
+
+    def with_record(self, gate: ApprovalGate, record: ApprovalRecord) -> "ApprovalBundle":
+        updated = dict(self.approvals)
+        updated[gate] = record
+        return ApprovalBundle(project_id=self.project_id, content_revision=self.content_revision, approvals=updated)

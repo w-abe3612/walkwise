@@ -1,72 +1,148 @@
-from __future__ import annotations
+"""script/worker/runtime.py — 公開契約:
+WorkerRuntime.run(request, token) -> Iterator[WorkerEvent],
+recover_after_abnormal_exit(job) -> RecoveryDecision.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/worker/runtime.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-WORKER-002
+Contract: docs/test-cases/TASK-WORKER-002-python-worker-cancel-timeout-and-recovery.md
+Spec: docs/specifications/21-electron-python-worker-interface.md(5.6, 5.8節),
+      docs/specifications/22-job-lifecycle-and-recovery.md(5.6節)
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-WORKER-002', 'WorkerRuntime.run(request, token) -> Iterator[WorkerEvent]', 'timeout、例外、部分成果物cleanupを管理する。'),
-    ('TASK-WORKER-002', 'recover_after_abnormal_exit(job) -> RecoveryDecision', '中途半端な出力を正式成果物にせず復旧判断する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-WORKER-002-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'cooperative cancel', 'given': '長処理中にcancel', 'when': 'runtime', 'then': 'cancel_requested→cancelled eventで停止', 'test_file': '`tests/test_worker_cancellation.py`'},
-    {'id': 'TC-WORKER-002-02', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'timeout', 'given': 'handlerが期限超過', 'when': 'runtime', 'then': 'timeout errorとcleanupを実行', 'test_file': '`tests/test_worker_runtime_failures.py`'},
-    {'id': 'TC-WORKER-002-03', 'priority': 'P0', 'layer': 'integration_mock', 'title': '異常終了', 'given': '一時file作成後process kill', 'when': 'recover', 'then': '正式成果物へ登録せず既存成果物を保持', 'test_file': '`tests/test_worker_cancellation.py`'},
-    {'id': 'TC-WORKER-002-04', 'priority': 'P1', 'layer': 'unit', 'title': 'grace period', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`CancellationToken.requested()/raise_if_cancelled()`を通じて「grace period」を実行する', 'then': '「grace period」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_worker_runtime_failures.py`'},
-    {'id': 'TC-WORKER-002-05', 'priority': 'P1', 'layer': 'unit', 'title': 'force terminate契約', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`CancellationToken.requested()/raise_if_cancelled()`を通じて「force terminate契約」を実行する', 'then': '「force terminate契約」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_worker_cancellation.py`'},
-    {'id': 'TC-WORKER-002-06', 'priority': 'P1', 'layer': 'unit', 'title': '途中終了', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`CancellationToken.requested()/raise_if_cancelled()`を通じて「途中終了」を実行する', 'then': '「途中終了」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_worker_runtime_failures.py`'},
-    {'id': 'TC-WORKER-002-07', 'priority': 'P1', 'layer': 'unit', 'title': '既存正常成果物保持', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`CancellationToken.requested()/raise_if_cancelled()`を通じて「既存正常成果物保持」を実行する', 'then': '「既存正常成果物保持」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_worker_cancellation.py`'},
-    {'id': 'TC-WORKER-002-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`CancellationToken.requested()/raise_if_cancelled()`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_worker_runtime_failures.py`'},
-    {'id': 'TC-WORKER-002-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`CancellationToken.requested()/raise_if_cancelled()`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_worker_cancellation.py`'},
-    {'id': 'TC-WORKER-002-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_worker_runtime_failures.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/worker/runtime.py)")
+import time
+from collections.abc import Callable, Iterator
+from typing import Any
+
+from script.domain.enums import JobStatus
+from script.domain.models import Job
+from script.worker.cancellation import CancellationToken
+from script.worker.protocol import WorkerError, WorkerEvent, WorkerRequest
+
+Handler = Callable[[WorkerRequest, CancellationToken], Iterator[WorkerEvent]]
+
 
 class RecoveryDecision:
-    """Typed data placeholder; fields are finalized during task implementation."""
+    """recover_after_abnormal_exit()の戻り値。"""
+
     def __init__(self, **data: Any) -> None:
+        if not data.get("job_id"):
+            raise WorkerError("invalid_request", "job_id is required")
+        if not data.get("new_status"):
+            raise WorkerError("invalid_request", "new_status is required")
+        if not data.get("reason"):
+            raise WorkerError("invalid_request", "reason is required")
         self.data = dict(data)
+        self.data.setdefault("discard_partial_artifacts", True)
+
     def __getattr__(self, name: str) -> Any:
         try:
             return self.data[name]
         except KeyError as exc:
             raise AttributeError(name) from exc
 
-class WorkerEvent:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
 
 class WorkerRuntime:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def run(self, request: Any, token: Any) -> Iterator[WorkerEvent]:
-        """timeout、例外、部分成果物cleanupを管理する。
+    """timeout、cancel、部分成果物cleanupを管理しつつhandlerを実行する。"""
 
-        Public contract: ``WorkerRuntime.run(request, token) -> Iterator[WorkerEvent]``.
-        """
-        _step4_unimplemented('WorkerRuntime.run')
+    def __init__(
+        self,
+        handler: Handler,
+        *,
+        timeout_seconds: float | None = None,
+        grace_period_seconds: float = 1.0,
+        clock: Callable[[], float] | None = None,
+        cleanup: Callable[[WorkerRequest], None] | None = None,
+    ) -> None:
+        if handler is None:
+            raise WorkerError("invalid_request", "handler is required")
+        if grace_period_seconds < 0:
+            raise WorkerError("invalid_request", "grace_period_seconds must be 0 or greater")
+        self._handler = handler
+        self._timeout_seconds = timeout_seconds
+        self._grace_period_seconds = grace_period_seconds
+        self._clock = clock if clock is not None else time.monotonic
+        self._cleanup = cleanup
 
-def recover_after_abnormal_exit(job: Any) -> RecoveryDecision:
-    """中途半端な出力を正式成果物にせず復旧判断する。
+    def run(self, request: WorkerRequest, token: CancellationToken) -> Iterator[WorkerEvent]:
+        """timeout・cancelを監視しながらhandlerのeventを転送する。"""
+        if request is None:
+            raise WorkerError("invalid_request", "request is required")
+        if token is None:
+            raise WorkerError("invalid_request", "token is required")
 
-    Public contract: ``recover_after_abnormal_exit(job) -> RecoveryDecision``.
+        start = self._clock()
+        yield WorkerEvent(event="started", job_id=request.job_id)
+
+        generator = self._handler(request, token)
+        cancel_deadline: float | None = None
+
+        while True:
+            if self._timeout_seconds is not None and (self._clock() - start) > self._timeout_seconds:
+                generator.close()
+                self._safe_cleanup(request)
+                yield WorkerEvent(event="error", job_id=request.job_id, code="timeout",
+                                   message="handler exceeded timeout")
+                return
+
+            if cancel_deadline is None and token.requested():
+                cancel_deadline = self._clock() + self._grace_period_seconds
+                yield WorkerEvent(event="cancel_requested", job_id=request.job_id)
+
+            if cancel_deadline is not None and self._clock() >= cancel_deadline:
+                # grace period内にhandlerが自発的に停止しなかった場合の強制終了。
+                generator.close()
+                self._safe_cleanup(request)
+                yield WorkerEvent(event="cancelled", job_id=request.job_id, forced=True)
+                return
+
+            try:
+                event = next(generator)
+            except StopIteration:
+                break
+            except WorkerError as exc:
+                self._safe_cleanup(request)
+                if exc.code == "cancelled":
+                    yield WorkerEvent(event="cancelled", job_id=request.job_id, forced=False)
+                else:
+                    yield WorkerEvent(event="error", job_id=request.job_id, code=exc.code, message=exc.message)
+                return
+            except Exception as exc:  # handler内の予期しない失敗
+                self._safe_cleanup(request)
+                yield WorkerEvent(event="error", job_id=request.job_id, code="general_error", message=str(exc))
+                return
+
+            yield event
+
+        if cancel_deadline is not None:
+            # cancel要求後、grace period内にhandlerが自発的に終了した(cooperative cancel)。
+            self._safe_cleanup(request)
+            yield WorkerEvent(event="cancelled", job_id=request.job_id, forced=False)
+            return
+
+        yield WorkerEvent(event="completed", job_id=request.job_id)
+
+    def _safe_cleanup(self, request: WorkerRequest) -> None:
+        if self._cleanup is not None:
+            self._cleanup(request)
+
+
+def recover_after_abnormal_exit(job: Job) -> RecoveryDecision:
+    """22-job-lifecycle-and-recovery.md 5.6節: 異常終了で`running`のまま残ったJobを復旧判断する。
+
+    中途半端な出力を正式成果物として登録せず、既存の正常な成果物はそのまま保持する
+    (本関数はfilesystem/DBへの副作用を一切持たない、純粋な決定関数)。
     """
-    _step4_unimplemented('recover_after_abnormal_exit')
+    if job is None:
+        raise WorkerError("invalid_request", "job is required")
+    if job.status != JobStatus.RUNNING:
+        raise WorkerError(
+            "invalid_request",
+            f"job is not in a recoverable (running) state: {job.status}",
+        )
+
+    return RecoveryDecision(
+        job_id=job.job_id,
+        new_status=JobStatus.FAILED,
+        reason="stale_job_detected_on_startup",
+        discard_partial_artifacts=True,
+    )

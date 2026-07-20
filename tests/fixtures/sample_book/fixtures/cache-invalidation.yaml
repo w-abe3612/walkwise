@@ -1,0 +1,4 @@
+schema_version: "1.0"
+claims_override:
+  claim-01-definition:
+    statement: "サンプル技術の定義に関する主張(改訂版、内容変更あり)。"

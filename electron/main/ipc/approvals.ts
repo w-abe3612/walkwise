@@ -1,30 +1,109 @@
-/** STEP4 typed source scaffold for electron/main/ipc/approvals.ts.
- * Public bodies intentionally throw until Claude Code implements the task.
+/**
+ * electron/main/ipc/approvals.ts — 公開契約: approval:list/approve/request-changes handlers.
+ *
+ * Contract: docs/test-cases/TASK-UI-002-source-workspace-review-and-approval.md
+ * Spec: docs/specifications/07-approval-workflow.md,
+ *       docs/screens/02-project-workspace-and-source-import.md(10節)
  */
 
-export type Step4ContractEntry = Readonly<{ taskId: string; symbol: string; contract: string }>;
-export type Step4TestCase = Readonly<{ id: string; priority: string; layer: string; title: string; given: string; when: string; then: string; testFile: string }>;
-
-export const STEP4_PUBLIC_CONTRACTS: readonly Step4ContractEntry[] = [
-  { taskId: "TASK-UI-002", symbol: "approval:list/approve/request-changes handlers", contract: "\u5dee\u3057\u623b\u3057\u7406\u7531\u3068gate\u3092\u691c\u8a3c\u3059\u308b\u3002" },
-];
-
-export const STEP4_TEST_CASES: readonly Step4TestCase[] = [
-  {"id": "TC-UI-002-01", "priority": "P0", "layer": "unit", "title": "Source状態表示", "given": "5 statusのSource", "when": "render", "then": "仕様の日本語表示とreview/retry導線", "testFile": "`electron/tests/source_approval_ipc.test.ts`"},
-  {"id": "TC-UI-002-02", "priority": "P0", "layer": "unit", "title": "差し戻し", "given": "理由空/あり", "when": "request changes", "then": "空は拒否、ありはIPC1回", "testFile": "`electron/renderer/tests/ProjectWorkspace.test.ts`"},
-  {"id": "TC-UI-002-03", "priority": "P0", "layer": "unit", "title": "対象外非表示", "given": "EPUB/Kindle/video", "when": "render", "then": "選択肢にもdisabledにも表示しない", "testFile": "`electron/tests/source_approval_ipc.test.ts`"},
-  {"id": "TC-UI-002-04", "priority": "P1", "layer": "integration_mock", "title": "file dialog/drop", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`source:register handlers`を通じて「file dialog/drop」を実行する", "then": "「file dialog/drop」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/renderer/tests/ProjectWorkspace.test.ts`"},
-  {"id": "TC-UI-002-05", "priority": "P1", "layer": "unit", "title": "処理開始", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`source:register handlers`を通じて「処理開始」を実行する", "then": "「処理開始」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/tests/source_approval_ipc.test.ts`"},
-  {"id": "TC-UI-002-06", "priority": "P1", "layer": "unit", "title": "再処理/修正/問題なし", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`source:register handlers`を通じて「再処理/修正/問題なし」を実行する", "then": "「再処理/修正/問題なし」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/renderer/tests/ProjectWorkspace.test.ts`"},
-  {"id": "TC-UI-002-07", "priority": "P1", "layer": "unit", "title": "approval badges", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`source:register handlers`を通じて「approval badges」を実行する", "then": "必要な承認が揃う場合だけ後工程へ進み、未承認・invalidated・changes_requestedでは安定errorで停止する。", "testFile": "`electron/tests/source_approval_ipc.test.ts`"},
-  {"id": "TC-UI-002-08", "priority": "P0", "layer": "unit", "title": "必須入力欠落", "given": "主ID、必須path、必須設定のいずれかが欠落した入力", "when": "`source:register handlers`を実行する", "then": "副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。", "testFile": "`electron/renderer/tests/ProjectWorkspace.test.ts`"},
-  {"id": "TC-UI-002-09", "priority": "P1", "layer": "unit", "title": "再実行時の決定性", "given": "同じ入力、同じ設定、同じ依存応答", "when": "`source:register handlers`を2回実行する", "then": "仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。", "testFile": "`electron/tests/source_approval_ipc.test.ts`"},
-];
-
-function step4Unimplemented(symbol: string): never {
-  throw new Error(`STEP4 source scaffold is not implemented: ${symbol} (electron/main/ipc/approvals.ts)`);
+export interface ApprovalSummary {
+  readonly gate: string;
+  readonly status: string;
+  readonly comment?: string;
 }
 
-export function registerApprovalIpcHandlers(..._args: readonly unknown[]): unknown {
-  return step4Unimplemented("registerApprovalIpcHandlers");
+export interface ApproveInput {
+  readonly projectId: string;
+  readonly gate: string;
+  readonly approvedBy: string;
+}
+
+export interface RequestChangesInput {
+  readonly projectId: string;
+  readonly gate: string;
+  readonly reason: string;
+}
+
+export interface ApprovalServiceLike {
+  list(projectId: string): Promise<readonly ApprovalSummary[]>;
+  approve(input: ApproveInput): Promise<ApprovalSummary>;
+  requestChanges(input: RequestChangesInput): Promise<ApprovalSummary>;
+}
+
+export class ApprovalValidationError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+export interface IpcMainLike {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+}
+
+export interface ApprovalIpcContext {
+  readonly ipcMain: IpcMainLike;
+  readonly approvalService: ApprovalServiceLike;
+}
+
+function requireNonEmptyString(value: unknown, field: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ApprovalValidationError("validation_error", `${field} is required`);
+  }
+  return value.trim();
+}
+
+function validateApproveInput(raw: unknown): ApproveInput {
+  if (!raw || typeof raw !== "object") {
+    throw new ApprovalValidationError("validation_error", "input must be an object");
+  }
+  const input = raw as Record<string, unknown>;
+  return {
+    projectId: requireNonEmptyString(input.projectId, "projectId"),
+    gate: requireNonEmptyString(input.gate, "gate"),
+    approvedBy: requireNonEmptyString(input.approvedBy, "approvedBy"),
+  };
+}
+
+function validateRequestChangesInput(raw: unknown): RequestChangesInput {
+  if (!raw || typeof raw !== "object") {
+    throw new ApprovalValidationError("validation_error", "input must be an object");
+  }
+  const input = raw as Record<string, unknown>;
+  return {
+    projectId: requireNonEmptyString(input.projectId, "projectId"),
+    gate: requireNonEmptyString(input.gate, "gate"),
+    // 02-project-workspace-and-source-import.md 10節: 差し戻しは理由入力(必須)を伴う。
+    reason: requireNonEmptyString(input.reason, "reason"),
+  };
+}
+
+/** 差し戻し理由とgateを検証する。 */
+export function registerApprovalIpcHandlers(context: ApprovalIpcContext): void {
+  if (!context) {
+    throw new Error("context is required");
+  }
+  if (!context.ipcMain) {
+    throw new Error("ipcMain is required");
+  }
+  if (!context.approvalService) {
+    throw new Error("approvalService is required");
+  }
+
+  context.ipcMain.handle("approval:list", async (_event: unknown, projectId: unknown) => {
+    const validated = requireNonEmptyString(projectId, "projectId");
+    return context.approvalService.list(validated);
+  });
+
+  context.ipcMain.handle("approval:approve", async (_event: unknown, rawInput: unknown) => {
+    const validated = validateApproveInput(rawInput);
+    return context.approvalService.approve(validated);
+  });
+
+  context.ipcMain.handle("approval:request-changes", async (_event: unknown, rawInput: unknown) => {
+    const validated = validateRequestChangesInput(rawInput);
+    return context.approvalService.requestChanges(validated);
+  });
 }

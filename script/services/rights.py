@@ -1,69 +1,87 @@
-from __future__ import annotations
+"""script/services/rights.py — 公開契約: RightsService.evaluate_*, build_credit_manifest.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/services/rights.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-RIGHTS-001
+Contract: docs/test-cases/TASK-RIGHTS-001-rights-license-and-distribution-gate.md
+Spec: docs/specifications/rights-and-license-management.md (5.3節, 5.6節, 5.7節)
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-RIGHTS-001', 'RightsService.evaluate_local_generation(record) -> DistributionDecision', '個人ローカル用途は未確認でも条件付き許可できる。'),
-    ('TASK-RIGHTS-001', 'RightsService.evaluate_distribution(records) -> DistributionDecision', '未確認・禁止・credit不足があればhard blockする。'),
-    ('TASK-RIGHTS-001', 'build_credit_manifest(records) -> dict', '人間確認済みcreditだけを決定的順序で出力する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-RIGHTS-001-01', 'priority': 'P0', 'layer': 'unit', 'title': '個人学習未確認', 'given': 'personal_learningかつrights unverified', 'when': 'local generationを評価', 'then': '条件付き許可しdistributionは許可しない', 'test_file': '`tests/test_rights_gate.py`'},
-    {'id': 'TC-RIGHTS-001-02', 'priority': 'P0', 'layer': 'unit', 'title': '配布hard gate', 'given': '1資料でもrights未確認', 'when': 'distributionを評価', 'then': 'blockedになり不足項目を列挙する', 'test_file': '`tests/test_credit_manifest.py`'},
-    {'id': 'TC-RIGHTS-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'credit決定性', 'given': '複数の確認済みcredit', 'when': 'manifestを生成', 'then': '安定順で重複なく出力する', 'test_file': '`tests/test_rights_gate.py`'},
-    {'id': 'TC-RIGHTS-001-04', 'priority': 'P1', 'layer': 'unit', 'title': '4 usage purposes', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`RightsRecord/CreditEntry/DistributionDecision`を通じて「4 usage purposes」を実行する', 'then': '「4 usage purposes」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_credit_manifest.py`'},
-    {'id': 'TC-RIGHTS-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'unverified personal local generation許可', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`RightsRecord/CreditEntry/DistributionDecision`を通じて「unverified personal local generation許可」を実行する', 'then': '「unverified personal local generation許可」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_rights_gate.py`'},
-    {'id': 'TC-RIGHTS-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'human confirmation', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`RightsRecord/CreditEntry/DistributionDecision`を通じて「human confirmation」を実行する', 'then': '「human confirmation」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_credit_manifest.py`'},
-    {'id': 'TC-RIGHTS-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'evidence記録', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`RightsRecord/CreditEntry/DistributionDecision`を通じて「evidence記録」を実行する', 'then': '「evidence記録」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_rights_gate.py`'},
-    {'id': 'TC-RIGHTS-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`RightsRecord/CreditEntry/DistributionDecision`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_credit_manifest.py`'},
-    {'id': 'TC-RIGHTS-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`RightsRecord/CreditEntry/DistributionDecision`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_rights_gate.py`'},
-    {'id': 'TC-RIGHTS-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_credit_manifest.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/services/rights.py)")
+from collections.abc import Sequence
 
-class DistributionDecision:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+from script.core.errors import AppError, ErrorCode
+from script.schemas.rights import CreditEntry, DistributionDecision, GateDecision, RightsRecord
+
 
 class RightsService:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def evaluate_local_generation(self, record: Any) -> DistributionDecision:
-        """個人ローカル用途は未確認でも条件付き許可できる。
+    """個人ローカル生成と配布を別gateで判定する。"""
 
-        Public contract: ``RightsService.evaluate_local_generation(record) -> DistributionDecision``.
-        """
-        _step4_unimplemented('RightsService.evaluate_local_generation')
-    def evaluate_distribution(self, records: Any) -> DistributionDecision:
-        """未確認・禁止・credit不足があればhard blockする。
+    def evaluate_local_generation(self, record: RightsRecord) -> DistributionDecision:
+        """個人ローカル用途は未確認でも条件付き許可できる。"""
+        if record is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "record is required")
 
-        Public contract: ``RightsService.evaluate_distribution(records) -> DistributionDecision``.
-        """
-        _step4_unimplemented('RightsService.evaluate_distribution')
+        decision = record.gate_decision()
+        if decision is GateDecision.BLOCKED:
+            return DistributionDecision(
+                allowed=False,
+                reasons=(f"{record.source_id}: blocked for {record.usage_purpose.value}",),
+            )
+        return DistributionDecision(allowed=True, review_required=decision is GateDecision.REVIEW_REQUIRED)
 
-def build_credit_manifest(records: Any) -> dict:
-    """人間確認済みcreditだけを決定的順序で出力する。
+    def evaluate_distribution(self, records: Sequence[RightsRecord]) -> DistributionDecision:
+        """未確認・禁止・credit不足があればhard blockする。"""
+        if not records:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "records must not be empty")
 
-    Public contract: ``build_credit_manifest(records) -> dict``.
-    """
-    _step4_unimplemented('build_credit_manifest')
+        blocked_reasons: list[str] = []
+        review_reasons: list[str] = []
+        for record in records:
+            decision = record.gate_decision()
+            if decision is GateDecision.BLOCKED:
+                blocked_reasons.append(
+                    f"{record.source_id}: rights.status={record.status.value} does not permit "
+                    f"{record.usage_purpose.value}"
+                )
+            elif decision is GateDecision.REVIEW_REQUIRED:
+                review_reasons.append(f"{record.source_id}: requires human review before distribution")
+
+        if blocked_reasons:
+            return DistributionDecision(allowed=False, reasons=tuple(blocked_reasons))
+        if review_reasons:
+            return DistributionDecision(allowed=False, review_required=True, reasons=tuple(review_reasons))
+        return DistributionDecision(allowed=True)
+
+
+def build_credit_manifest(records: Sequence[RightsRecord]) -> dict:
+    """人間確認済みcreditだけを決定的順序で出力する。"""
+    if records is None:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "records is required")
+
+    seen: set[str] = set()
+    entries: list[CreditEntry] = []
+    for record in sorted(records, key=lambda r: r.source_id):
+        if record.source_id in seen:
+            continue
+        if record.confirmed_by is None or record.confirmed_by.type != "human":
+            continue
+        display_text = record.evidence.license_name or "Public Domain"
+        entries.append(
+            CreditEntry(
+                source_id=record.source_id,
+                display_text=display_text,
+                required_by_license=record.evidence.license_name is not None,
+            )
+        )
+        seen.add(record.source_id)
+
+    return {
+        "schema_version": "1.0",
+        "credits": [
+            {
+                "source_id": entry.source_id,
+                "display_text": entry.display_text,
+                "required_by_license": entry.required_by_license,
+            }
+            for entry in entries
+        ],
+    }

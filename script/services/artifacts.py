@@ -1,77 +1,137 @@
-from __future__ import annotations
+"""script/services/artifacts.py — 公開契約: ArtifactService.register/list_latest/list_versions.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/services/artifacts.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-ARTIFACT-001
+Contract: docs/test-cases/TASK-ARTIFACT-001-artifact-registry-and-versioning.md
+Spec: docs/db/05-artifacts-table.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-ARTIFACT-001', 'ArtifactService.register(command: RegisterArtifact) -> Artifact', 'ファイル存在・hash・Job/Project整合を確認し次versionで追記する。'),
-    ('TASK-ARTIFACT-001', 'ArtifactService.list_latest(project_id) -> list[Artifact]', 'artifact typeごとの最新versionを返す。'),
-    ('TASK-ARTIFACT-001', 'ArtifactService.list_versions(project_id, artifact_type) -> list[Artifact]', '全versionを降順で返す。'),
+from __future__ import annotations
+
+import sqlite3
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+from script.core.errors import AppError, ErrorCode
+from script.domain.enums import ArtifactType
+from script.domain.models import Artifact
+from script.persistence.files import copy_immutable
+from script.persistence.paths import ProjectPaths
+from script.persistence.repositories import (
+    ArtifactRepository,
+    BuildRequestRepository,
+    JobRepository,
+    ProjectRepository,
 )
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-ARTIFACT-001-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': '形式別version', 'given': 'mp3 v1とtext v1がある', 'when': '双方を再登録', 'then': 'mp3 v2とtext v2として独立採番する', 'test_file': '`tests/test_artifact_service.py`'},
-    {'id': 'TC-ARTIFACT-001-02', 'priority': 'P0', 'layer': 'unit', 'title': 'file不在', 'given': '存在しないpath', 'when': 'registerする', 'then': 'DBへ行を追加しない', 'test_file': '`tests/test_artifact_service.py`'},
-    {'id': 'TC-ARTIFACT-001-03', 'priority': 'P0', 'layer': 'unit', 'title': '上書き禁止', 'given': '既存Artifact fileを出力先に指定', 'when': 'registerする', 'then': '既存内容を変更せず新version/pathを要求する', 'test_file': '`tests/test_artifact_service.py`'},
-    {'id': 'TC-ARTIFACT-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'mp3_chapter/text_verified_script', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ArtifactService.register(command: RegisterArtifact) -> Artifact`を通じて「mp3_chapter/text_verified_script」を実行する', 'then': '有効なmedia header・形式・順序を確認し、破損または形式不一致を成功扱いにしない。', 'test_file': '`tests/test_artifact_service.py`'},
-    {'id': 'TC-ARTIFACT-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'ファイル存在/hash確認', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ArtifactService.register(command: RegisterArtifact) -> Artifact`を通じて「ファイル存在/hash確認」を実行する', 'then': '同一の正規化入力から同一SHA-256を返し、内容差分があればhashが変化する。', 'test_file': '`tests/test_artifact_service.py`'},
-    {'id': 'TC-ARTIFACT-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'Project/Job整合', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ArtifactService.register(command: RegisterArtifact) -> Artifact`を通じて「Project/Job整合」を実行する', 'then': '「Project/Job整合」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_artifact_service.py`'},
-    {'id': 'TC-ARTIFACT-001-07', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`ArtifactService.register(command: RegisterArtifact) -> Artifact`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_artifact_service.py`'},
-    {'id': 'TC-ARTIFACT-001-08', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`ArtifactService.register(command: RegisterArtifact) -> Artifact`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_artifact_service.py`'},
-    {'id': 'TC-ARTIFACT-001-09', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_artifact_service.py`'},
-)
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/services/artifacts.py)")
 
-class Artifact:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
-
+@dataclass(frozen=True)
 class RegisterArtifact:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """Artifact登録の入力。"""
+
+    artifact_id: str
+    job_id: str
+    project_id: str
+    artifact_type: ArtifactType
+    source_path: Path
+    destination_relative: str
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
 
 class ArtifactService:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
+    """生成済みファイルを追記専用Artifactとして登録し、version系列と一覧取得を提供する。"""
+
+    def __init__(self, data_root: Path, connection: sqlite3.Connection) -> None:
+        if not data_root or connection is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "data_root and connection are required")
+        self._data_root = Path(data_root)
+        self._connection = connection
+
     def register(self, command: RegisterArtifact) -> Artifact:
-        """ファイル存在・hash・Job/Project整合を確認し次versionで追記する。
+        """ファイル存在・hash・Job/Project整合を確認し次versionで追記する。"""
+        if (
+            command is None
+            or not command.artifact_id
+            or not command.job_id
+            or not command.project_id
+            or not command.source_path
+            or not command.destination_relative
+        ):
+            raise AppError(ErrorCode.VALIDATION_ERROR, "artifact_id, job_id, project_id, source_path and destination_relative are required")
 
-        Public contract: ``ArtifactService.register(command: RegisterArtifact) -> Artifact``.
-        """
-        _step4_unimplemented('ArtifactService.register')
-    def list_latest(self, project_id: Any) -> list[Artifact]:
-        """artifact typeごとの最新versionを返す。
+        source_path = Path(command.source_path)
+        if not source_path.is_file():
+            raise AppError(ErrorCode.NOT_FOUND, f"artifact source file does not exist: {source_path}")
 
-        Public contract: ``ArtifactService.list_latest(project_id) -> list[Artifact]``.
-        """
-        _step4_unimplemented('ArtifactService.list_latest')
-    def list_versions(self, project_id: Any, artifact_type: Any) -> list[Artifact]:
-        """全versionを降順で返す。
+        job = JobRepository(self._connection).find(command.job_id)
+        if job is None:
+            raise AppError(ErrorCode.NOT_FOUND, f"job not found: {command.job_id}")
 
-        Public contract: ``ArtifactService.list_versions(project_id, artifact_type) -> list[Artifact]``.
-        """
-        _step4_unimplemented('ArtifactService.list_versions')
+        project = ProjectRepository(self._connection).find(command.project_id)
+        if project is None:
+            raise AppError(ErrorCode.NOT_FOUND, f"project not found: {command.project_id}")
+
+        build_request = BuildRequestRepository(self._connection).find(job.build_request_id)
+        if build_request is None or build_request.project_id != command.project_id:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                f"job {command.job_id} does not belong to project {command.project_id}",
+            )
+
+        paths = ProjectPaths.for_root(self._data_root, command.project_id)
+        destination_path = paths.resolve_relative(command.destination_relative)
+        if destination_path.exists():
+            raise AppError(
+                ErrorCode.CONFLICT,
+                f"artifact destination already exists (artifacts are append-only): {command.destination_relative}",
+            )
+
+        version_number = self._next_version(command.project_id, command.artifact_type)
+        digest = copy_immutable(source_path, destination_path)
+
+        artifact = Artifact(
+            artifact_id=command.artifact_id,
+            job_id=command.job_id,
+            project_id=command.project_id,
+            artifact_type=command.artifact_type,
+            file_path=command.destination_relative,
+            version_number=version_number,
+            content_hash=digest.value,
+            created_at=_now_iso(),
+        )
+
+        ArtifactRepository(self._connection).insert(artifact)
+        self._connection.commit()
+        return artifact
+
+    def list_latest(self, project_id: str) -> list[Artifact]:
+        """artifact typeごとの最新versionを返す。"""
+        if not project_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id is required")
+
+        all_versions = ArtifactRepository(self._connection).list_by_project(project_id)
+        latest_by_type: dict[str, Artifact] = {}
+        for artifact in all_versions:
+            key = artifact.artifact_type.value
+            existing = latest_by_type.get(key)
+            if existing is None or artifact.version_number > existing.version_number:
+                latest_by_type[key] = artifact
+        return [latest_by_type[key] for key in sorted(latest_by_type)]
+
+    def list_versions(self, project_id: str, artifact_type: ArtifactType) -> list[Artifact]:
+        """全versionを降順で返す。"""
+        if not project_id or artifact_type is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id and artifact_type are required")
+
+        matching = [
+            artifact
+            for artifact in ArtifactRepository(self._connection).list_by_project(project_id)
+            if artifact.artifact_type == artifact_type
+        ]
+        return sorted(matching, key=lambda artifact: artifact.version_number, reverse=True)
+
+    def _next_version(self, project_id: str, artifact_type: ArtifactType) -> int:
+        existing = self.list_versions(project_id, artifact_type)
+        return (existing[0].version_number + 1) if existing else 1

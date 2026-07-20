@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-20'
 related_tasks:
 - TASK-PIPELINE-001
 release_scopes:
@@ -20,8 +21,17 @@ STEP3/STEP4の空実装段階では、strict xfail・明示的未実装error・o
 
 ## 2. 関連タスク
 
-- `TASK-PIPELINE-001` — 変更影響判定・部分再生成計画（MVP）
+- `TASK-PIPELINE-001` — 変更影響判定・部分再生成計画（MVP、本実装済み）
   - 契約: `docs/test-cases/TASK-PIPELINE-001-dependency-impact-and-partial-regeneration.md`
+  - production: `script/pipelines/impact.py`, `script/pipelines/regeneration.py`
+  - 対象10 case(TC-PIPELINE-001-01〜10)はすべてpassする。
+  - `ImpactAnalyzer.analyze(change, graph)`は
+    `02-process-input-output.md`14節の再利用・部分再生成表を型化した
+    `ChangeType`→`TargetCategory`対応を返す。`RegenerationPlanner
+    .plan(impact_set, cache_state)`は、対象categoryへ対応する
+    `07-approval-workflow.md`の承認地点(materials_curriculum/
+    planning/verified_script/preview_audio)が`approved`でなければ
+    `PERMISSION_DENIED`で停止する(MP3タグのみの変更は承認gate対象外)。
 
 ## 3. 実行前提
 
@@ -40,8 +50,10 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_impact_analysis.py` — 現在のダンプでは欠落
-- `tests/test_regeneration_plan.py` — 現在のダンプでは欠落
+- `tests/test_impact_analysis.py`
+- `tests/test_regeneration_plan.py`
+
+現在の存在有無は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。
 
 ## 5. 収集・型確認
 

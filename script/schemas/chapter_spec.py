@@ -1,44 +1,95 @@
+"""script/schemas/chapter_spec.py — 公開契約: ChapterSpec.validate().
+
+Contract: docs/test-cases/TASK-CURRICULUM-001-curriculum-and-chapter-spec-generation.md
+Spec: docs/specifications/04-chapter-generation-schema.md
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
 
-"""STEP4 typed source scaffold for script/schemas/chapter_spec.py.
+from script.core.errors import AppError, ErrorCode
 
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-CURRICULUM-001
-"""
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-CURRICULUM-001', 'ChapterSpec.validate()', 'topic/source参照と目標値を検証する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-CURRICULUM-001-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': '章参照整合', 'given': 'valid analysis/project plan', 'when': '生成', 'then': 'topic/source参照が存在し章orderが一意', 'test_file': '`tests/test_curriculum_pipeline.py`'},
-    {'id': 'TC-CURRICULUM-001-02', 'priority': 'P0', 'layer': 'unit', 'title': '未知topic', 'given': 'chapter specが未定義topicを参照', 'when': 'validate', 'then': 'errorにする', 'test_file': '`tests/test_chapter_spec_schema.py`'},
-    {'id': 'TC-CURRICULUM-001-03', 'priority': 'P0', 'layer': 'unit', 'title': '承認前状態', 'given': 'AI生成直後', 'when': 'resultを保存', 'then': 'approvedではなくreview_pending/draft', 'test_file': '`tests/test_curriculum_pipeline.py`'},
-    {'id': 'TC-CURRICULUM-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'learning outcomes', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`TopicMap/Curriculum`を通じて「learning outcomes」を実行する', 'then': '「learning outcomes」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_chapter_spec_schema.py`'},
-    {'id': 'TC-CURRICULUM-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'coverage反映', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`TopicMap/Curriculum`を通じて「coverage反映」を実行する', 'then': '「coverage反映」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_curriculum_pipeline.py`'},
-    {'id': 'TC-CURRICULUM-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'source_ids', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`TopicMap/Curriculum`を通じて「source_ids」を実行する', 'then': '「source_ids」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_chapter_spec_schema.py`'},
-    {'id': 'TC-CURRICULUM-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'AI tier指定', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`TopicMap/Curriculum`を通じて「AI tier指定」を実行する', 'then': '「AI tier指定」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_curriculum_pipeline.py`'},
-    {'id': 'TC-CURRICULUM-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`TopicMap/Curriculum`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_chapter_spec_schema.py`'},
-    {'id': 'TC-CURRICULUM-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`TopicMap/Curriculum`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_curriculum_pipeline.py`'},
-    {'id': 'TC-CURRICULUM-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_chapter_spec_schema.py`'},
-)
+@dataclass(frozen=True)
+class RequiredTopicRef:
+    """chapter-spec.yamlのrequired_topics[]の1件。"""
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/schemas/chapter_spec.py)")
+    topic_id: str
+    title: str = ""
+    requirements: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        if not self.topic_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "topic_id is required")
+
+
+@dataclass(frozen=True)
 class ChapterSpec:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def validate(self) -> Any:
-        """topic/source参照と目標値を検証する。
+    """chapters/<chapter_id>/chapter-spec.yaml相当。
 
-        Public contract: ``ChapterSpec.validate()``.
+    known_topic_ids/known_source_ids は「承認済みproject内で実在するID一覧」を
+    呼び出し側が渡す前提(04-chapter-generation-schema.md 8節の参照整合検証)。
+    """
+
+    project_id: str
+    chapter_id: str
+    order: int
+    title: str
+    purpose: str
+    learning_outcomes: tuple[str, ...]
+    required_topics: tuple[RequiredTopicRef, ...]
+    explanation_order: tuple[str, ...]
+    source_ids: tuple[str, ...]
+    known_topic_ids: frozenset[str]
+    known_source_ids: frozenset[str]
+    ai_execution_policy: dict[str, str] = field(default_factory=dict)
+    target_character_count: int | None = None
+
+    def __post_init__(self) -> None:
+        if not self.project_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id is required")
+        if not self.chapter_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "chapter_id is required")
+        if self.order < 1:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "order must be 1 or greater")
+        if not self.title:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "title is required")
+        if not self.required_topics:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "required_topics must not be empty")
+        if self.target_character_count is not None and self.target_character_count <= 0:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "target_character_count must be a positive integer")
+
+    def validate(self) -> tuple[str, ...]:
+        """topic/source参照と目標値を検証し、非致命的warningsを返す。
+
+        04-chapter-generation-schema.md 8節:
+        - 未知のchapter_id/topic参照、重複topic_id、source未知参照はError(AppErrorを送出)。
+        - learning_outcomesが空はWarning(処理は継続、呼び出し側へ通知するだけ)。
         """
-        _step4_unimplemented('ChapterSpec.validate')
+        topic_ids_in_spec = tuple(ref.topic_id for ref in self.required_topics)
+        if len(set(topic_ids_in_spec)) != len(topic_ids_in_spec):
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                f"duplicate required_topics topic_id in chapter {self.chapter_id}",
+            )
+
+        for topic_id in topic_ids_in_spec:
+            if topic_id not in self.known_topic_ids:
+                raise AppError(ErrorCode.VALIDATION_ERROR, f"unknown topic_id referenced: {topic_id}")
+
+        for topic_id in self.explanation_order:
+            if topic_id not in topic_ids_in_spec:
+                raise AppError(
+                    ErrorCode.VALIDATION_ERROR,
+                    f"explanation_order references unknown topic_id: {topic_id}",
+                )
+
+        for source_id in self.source_ids:
+            if source_id not in self.known_source_ids:
+                raise AppError(ErrorCode.VALIDATION_ERROR, f"unknown source_id referenced: {source_id}")
+
+        warnings: list[str] = []
+        if not self.learning_outcomes:
+            warnings.append("learning_outcomes is empty")
+        return tuple(warnings)

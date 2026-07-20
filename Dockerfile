@@ -1,4 +1,5 @@
-# STEP4 contract scaffold. Final image details are implemented in TASK-ENV-001.
+# TASK-ENV-001: Python test stage. Fixed Python version, dependency install,
+# pytest collection/normal test execution. No external API/runtime required.
 FROM python:3.12-slim AS test
 WORKDIR /app
 COPY requirements.txt pyproject.toml ./

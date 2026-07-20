@@ -1,0 +1,11 @@
+schema_version: "1.0"
+steps:
+  toc_structuring: economy_structuring
+  topic_extraction: economy_structuring
+  claim_candidate_extraction: economy_structuring
+  format_conversion: economy_structuring
+  chapter_draft: standard_generation
+  readability_transform: standard_generation
+  audio_adaptation: standard_generation
+  source_conflict_check: high_assurance_review
+  final_semantic_review: high_assurance_review

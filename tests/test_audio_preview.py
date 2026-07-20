@@ -1,76 +1,90 @@
-"""STEP3 test scaffold for TASK-AUDIO-001: 試聴・segment TTS・WAV cache.
+"""STEP4 test implementation for TASK-AUDIO-001: PreviewService.
 
 Contract: docs/test-cases/TASK-AUDIO-001-preview-and-segment-tts-cache.md
 Release scope: MVP
-Planned production files:
-- script/audio/synthesis.py
-- script/audio/cache.py
-- script/audio/preview.py
-
-This file is the test-generation source of truth for the cases below.
-STEP3 intentionally imports no production module because STEP4 source
-scaffolds do not exist yet. Claude Code must replace each explicit
-failure with assertions without changing case IDs or contract meaning."""
+"""
 
 from __future__ import annotations
 
 import pytest
 
+from script.audio.preview import PreviewRequest, PreviewService
+from script.audio.synthesis import SegmentAudio
+from script.core.errors import AppError
+
 pytestmark = pytest.mark.mvp
 
+
+def _segment_audio(segment_id: str = "ch01-seg001", *, duration: float = 4.2, sample_rate: int = 24000) -> SegmentAudio:
+    return SegmentAudio(
+        segment_id=segment_id,
+        audio_id=f"{segment_id}-audio-id",
+        output_path=f"audio/cache/wav/segments/{segment_id}.wav",
+        duration_seconds=duration,
+        sample_rate_hz=sample_rate,
+        channels=1,
+    )
+
+
 @pytest.mark.integration_mock
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-AUDIO-001-03 is not implemented")
 def test_tc_audio_001_03() -> None:
-    """TC-AUDIO-001-03 — preview version
-    
-    Contract: docs/test-cases/TASK-AUDIO-001-preview-and-segment-tts-cache.md
-    Priority: P0
-    Layer: integration_mock
-    Given: 同条件で再試聴生成
-    When: generate
-    Then: 既存を上書きせず新versionを作る
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-AUDIO-001-03")
+    """TC-AUDIO-001-03 — preview version: 同条件で再試聴生成しても既存を上書きせず新versionを作る。"""
+    service = PreviewService()
+    request = PreviewRequest(project_id="proj-1", chapter_id="ch01", segment_audios=(_segment_audio(),))
+
+    preview_1 = service.generate(request)
+    preview_2 = service.generate(request)
+
+    assert preview_1.version == 1
+    assert preview_2.version == 2
+    assert preview_1.preview_id != preview_2.preview_id
+    assert preview_1.output_path != preview_2.output_path
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-AUDIO-001-06 is not implemented")
 def test_tc_audio_001_06() -> None:
-    """TC-AUDIO-001-06 — audio_id
-    
-    Contract: docs/test-cases/TASK-AUDIO-001-preview-and-segment-tts-cache.md
-    Priority: P1
-    Layer: unit
-    Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-    When: `SegmentSynthesizer.synthesize(script, profile) -> list[SegmentAudio]`を通じて「audio_id」を実行する
-    Then: 有効なmedia header・形式・順序を確認し、破損または形式不一致を成功扱いにしない。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-AUDIO-001-06")
+    """TC-AUDIO-001-06 — audio_id: 破損(duration/sample_rate不正)なsegment audioは成功扱いにしない。"""
+    good_audio = _segment_audio()
+    assert good_audio.audio_id == "ch01-seg001-audio-id"
+
+    with pytest.raises(AppError):
+        SegmentAudio(
+            segment_id="ch01-seg002",
+            audio_id="ch01-seg002-audio-id",
+            output_path="audio/cache/wav/segments/ch01-seg002.wav",
+            duration_seconds=-1.0,
+            sample_rate_hz=24000,
+            channels=1,
+        )
+
+    service = PreviewService()
+    zero_rate_audio = SegmentAudio.__new__(SegmentAudio)
+    object.__setattr__(zero_rate_audio, "segment_id", "ch01-seg003")
+    object.__setattr__(zero_rate_audio, "audio_id", "ch01-seg003-audio-id")
+    object.__setattr__(zero_rate_audio, "output_path", "audio/cache/wav/segments/ch01-seg003.wav")
+    object.__setattr__(zero_rate_audio, "duration_seconds", 1.0)
+    object.__setattr__(zero_rate_audio, "sample_rate_hz", 0)
+    object.__setattr__(zero_rate_audio, "channels", 1)
+    object.__setattr__(zero_rate_audio, "parts", ())
+    object.__setattr__(zero_rate_audio, "cache_hit", False)
+
+    with pytest.raises(AppError):
+        service.generate(PreviewRequest(project_id="proj-1", chapter_id="ch01", segment_audios=(zero_rate_audio,)))
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-AUDIO-001-09 is not implemented")
 def test_tc_audio_001_09() -> None:
-    """TC-AUDIO-001-09 — 再実行時の決定性
-    
-    Contract: docs/test-cases/TASK-AUDIO-001-preview-and-segment-tts-cache.md
-    Priority: P1
-    Layer: unit
-    Given: 同じ入力、同じ設定、同じ依存応答
-    When: `SegmentSynthesizer.synthesize(script, profile) -> list[SegmentAudio]`を2回実行する
-    Then: 仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-AUDIO-001-09")
+    """TC-AUDIO-001-09 — 再実行時の決定性: versionを除き同じ論理結果を返す。"""
+    service = PreviewService()
+    request = PreviewRequest(
+        project_id="proj-1", chapter_id="ch01", segment_audios=(_segment_audio("ch01-seg001"), _segment_audio("ch01-seg002"))
+    )
+
+    preview_1 = service.generate(request)
+    preview_2 = service.generate(request)
+
+    assert preview_1.segment_ids == preview_2.segment_ids
+    assert preview_1.duration_seconds == preview_2.duration_seconds
+    assert preview_1.project_id == preview_2.project_id
+    assert preview_1.chapter_id == preview_2.chapter_id
+    assert preview_2.version == preview_1.version + 1

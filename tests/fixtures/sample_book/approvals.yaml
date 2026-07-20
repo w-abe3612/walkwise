@@ -1,0 +1,36 @@
+schema_version: "1.0"
+project_id: sample-book
+content_revision: 1
+approvals:
+  materials_curriculum:
+    approval_id: approval-materials_curriculum-01
+    status: approved
+    approved_by: reviewer-1
+    approved_at: "2026-07-01T00:00:00+00:00"
+    target:
+      paths: ["sources.yaml", "coverage-map.yaml"]
+      content_hash: "sha256:materials-curriculum-fixture-hash"
+  planning:
+    approval_id: approval-planning-01
+    status: approved
+    approved_by: reviewer-1
+    approved_at: "2026-07-02T00:00:00+00:00"
+    target:
+      paths: ["ai-routing-plan.yaml"]
+      content_hash: "sha256:planning-fixture-hash"
+  verified_script:
+    approval_id: approval-verified_script-01
+    status: approved
+    approved_by: reviewer-1
+    approved_at: "2026-07-03T00:00:00+00:00"
+    target:
+      paths: ["script.yaml", "claims.yaml"]
+      content_hash: "sha256:verified-script-fixture-hash"
+  preview_audio:
+    approval_id: approval-preview_audio-01
+    status: approved
+    approved_by: reviewer-1
+    approved_at: "2026-07-04T00:00:00+00:00"
+    target:
+      paths: ["script.yaml"]
+      content_hash: "sha256:preview-audio-fixture-hash"

@@ -1,0 +1,30 @@
+schema_version: "1.0"
+claims:
+  - claim_id: claim-01-definition
+    segment_id: segment-03
+    statement: "サンプル技術の定義に関する主張。"
+    claim_type: definition
+    status: pending
+    source_evidence:
+      - source_id: source-official-guide
+  - claim_id: claim-02-numeric
+    segment_id: segment-04
+    statement: "サンプル技術の数値に関する主張。"
+    claim_type: numeric_fact
+    status: pending
+    source_evidence:
+      - source_id: source-free-textbook
+  - claim_id: claim-03-limitation
+    segment_id: segment-06
+    statement: "サンプル技術の制限に関する主張。"
+    claim_type: limitation
+    status: pending
+    source_evidence:
+      - source_id: source-official-guide
+      - source_id: source-free-textbook
+  - claim_id: claim-04-analogy
+    segment_id: segment-07
+    statement: "たとえるなら、という例え話。"
+    claim_type: generated_analogy
+    status: pending
+    source_evidence: []

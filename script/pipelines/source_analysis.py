@@ -1,72 +1,195 @@
-from __future__ import annotations
+"""script/pipelines/source_analysis.py — 公開契約: SourceAnalysisPipeline.run, analyze_gaps.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/pipelines/source_analysis.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-AI-003
+Contract: docs/test-cases/TASK-AI-003-source-analysis-and-coverage.md
+Spec: docs/specifications/18-ai-model-routing-and-cost-control.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-AI-003', 'SourceAnalysisPipeline.run(project_id, chunks) -> SourceAnalysisBundle', '必要chunkだけをAIへ渡しsummary/index/coverageを生成する。'),
-    ('TASK-AI-003', 'analyze_gaps(bundle) -> list[SourceRequirement]', 'missing/duplicate/conflictを決定的に抽出する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-AI-003-01', 'priority': 'P0', 'layer': 'unit', 'title': '必要chunk限定', 'given': '章に関連するchunkと無関係chunk', 'when': 'pipelineを実行', 'then': 'AI requestには関連chunkだけ入る', 'test_file': '`tests/test_source_analysis_pipeline.py`'},
-    {'id': 'TC-AI-003-02', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'coverage不足', 'given': '必須topicが資料にない', 'when': 'coverageを作る', 'then': 'missingと追加資料要件を出す', 'test_file': '`tests/test_coverage_map.py`'},
-    {'id': 'TC-AI-003-03', 'priority': 'P0', 'layer': 'integration_mock', 'title': '矛盾', 'given': '同topicでsource conflict', 'when': '分析', 'then': 'conflictを黙って解決せずreviewへ送る', 'test_file': '`tests/test_source_analysis_pipeline.py`'},
-    {'id': 'TC-AI-003-04', 'priority': 'P1', 'layer': 'unit', 'title': 'economy structuring', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`SourceSummary/TopicIndex/CoverageMap/SourceRequirement`を通じて「economy structuring」を実行する', 'then': '「economy structuring」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_coverage_map.py`'},
-    {'id': 'TC-AI-003-05', 'priority': 'P1', 'layer': 'unit', 'title': 'source summary schema', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`SourceSummary/TopicIndex/CoverageMap/SourceRequirement`を通じて「source summary schema」を実行する', 'then': '「source summary schema」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_source_analysis_pipeline.py`'},
-    {'id': 'TC-AI-003-06', 'priority': 'P1', 'layer': 'unit', 'title': 'topic index', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`SourceSummary/TopicIndex/CoverageMap/SourceRequirement`を通じて「topic index」を実行する', 'then': '「topic index」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_coverage_map.py`'},
-    {'id': 'TC-AI-003-07', 'priority': 'P1', 'layer': 'unit', 'title': '追加資料要求', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`SourceSummary/TopicIndex/CoverageMap/SourceRequirement`を通じて「追加資料要求」を実行する', 'then': '「追加資料要求」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_source_analysis_pipeline.py`'},
-    {'id': 'TC-AI-003-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`SourceSummary/TopicIndex/CoverageMap/SourceRequirement`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_coverage_map.py`'},
-    {'id': 'TC-AI-003-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`SourceSummary/TopicIndex/CoverageMap/SourceRequirement`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_source_analysis_pipeline.py`'},
-    {'id': 'TC-AI-003-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_coverage_map.py`'},
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+
+from script.ai_clients.base import AIClient, AIRequest
+from script.core.errors import AppError, ErrorCode
+from script.schemas.source_analysis import (
+    CoverageEntry,
+    CoverageMap,
+    CoverageStatus,
+    SourceRequirement,
+    SourceSummary,
+    TopicIndex,
+    TopicIndexEntry,
 )
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/pipelines/source_analysis.py)")
+_ECONOMY_MODEL_HINT = "gemini-2.5-flash-lite"
 
+
+@dataclass(frozen=True)
+class SourceChunkInput:
+    """SourceAnalysisPipelineへの1 chunk分の入力。"""
+
+    chunk_id: str
+    source_id: str
+    text: str
+    topic_ids: tuple[str, ...] = ()
+    conflicting: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.chunk_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "chunk_id is required")
+        if not self.source_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "source_id is required")
+        if not self.text:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "text is required")
+
+
+@dataclass(frozen=True)
+class RequiredTopic:
+    """coverage判定で必須とみなすtopic(source-requirements.yaml相当の最小入力)。"""
+
+    topic_id: str
+    required_source_roles: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.topic_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "topic_id is required")
+
+
+@dataclass(frozen=True)
 class SourceAnalysisBundle:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """SourceAnalysisPipeline.run()の戻り値。"""
 
-class SourceRequirement:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    project_id: str
+    summaries: tuple[SourceSummary, ...]
+    topic_index: TopicIndex
+    coverage_map: CoverageMap
+
 
 class SourceAnalysisPipeline:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def run(self, project_id: Any, chunks: Any) -> SourceAnalysisBundle:
-        """必要chunkだけをAIへ渡しsummary/index/coverageを生成する。
+    """必要chunkだけをAI(economy_structuring)へ渡しsummary/index/coverageを生成する。"""
 
-        Public contract: ``SourceAnalysisPipeline.run(project_id, chunks) -> SourceAnalysisBundle``.
-        """
-        _step4_unimplemented('SourceAnalysisPipeline.run')
+    def __init__(self, *, ai_client: AIClient, model: str = _ECONOMY_MODEL_HINT) -> None:
+        if ai_client is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "ai_client is required")
+        if not model:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "model is required")
+        self._ai_client = ai_client
+        self._model = model
 
-def analyze_gaps(bundle: Any) -> list[SourceRequirement]:
-    """missing/duplicate/conflictを決定的に抽出する。
+    def run(
+        self,
+        project_id: str,
+        chunks: Sequence[SourceChunkInput],
+        *,
+        required_topics: Sequence[RequiredTopic] = (),
+    ) -> SourceAnalysisBundle:
+        """必要chunkだけをAIへ渡しsummary/index/coverageを生成する。"""
+        if not project_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id is required")
+        if not chunks:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "chunks must not be empty")
 
-    Public contract: ``analyze_gaps(bundle) -> list[SourceRequirement]``.
-    """
-    _step4_unimplemented('analyze_gaps')
+        summaries = tuple(self._build_summary(source_id, chunks) for source_id in self._distinct_source_ids(chunks))
+        topic_index = self._build_topic_index(chunks)
+        coverage_map = self._build_coverage_map(project_id, chunks, required_topics)
+
+        return SourceAnalysisBundle(
+            project_id=project_id,
+            summaries=summaries,
+            topic_index=topic_index,
+            coverage_map=coverage_map,
+        )
+
+    @staticmethod
+    def _distinct_source_ids(chunks: Sequence[SourceChunkInput]) -> list[str]:
+        return sorted({chunk.source_id for chunk in chunks})
+
+    def _build_summary(self, source_id: str, chunks: Sequence[SourceChunkInput]) -> SourceSummary:
+        # 必要chunkだけをAIへ渡す: 対象source_idのchunkだけを本文に含める。
+        own_chunks = [chunk for chunk in chunks if chunk.source_id == source_id]
+        request = AIRequest(
+            user_text="\n\n".join(chunk.text for chunk in own_chunks),
+            system_instruction=f"Summarize the source '{source_id}' for a source-summary.yaml entry.",
+            model=self._model,
+        )
+        result = self._ai_client.generate(request)
+        return SourceSummary(source_id=source_id, summary=result.text)
+
+    @staticmethod
+    def _build_topic_index(chunks: Sequence[SourceChunkInput]) -> TopicIndex:
+        topic_ids = sorted({topic_id for chunk in chunks for topic_id in chunk.topic_ids})
+        entries = []
+        for topic_id in topic_ids:
+            # 必要chunkだけをAIへ渡す: 当該topicにhintされたchunkだけを参照する。
+            relevant = [chunk.chunk_id for chunk in chunks if topic_id in chunk.topic_ids]
+            entries.append(TopicIndexEntry(topic_id=topic_id, chunk_refs=tuple(relevant)))
+        return TopicIndex(entries=tuple(entries))
+
+    @staticmethod
+    def _build_coverage_map(
+        project_id: str,
+        chunks: Sequence[SourceChunkInput],
+        required_topics: Sequence[RequiredTopic],
+    ) -> CoverageMap:
+        entries: list[CoverageEntry] = []
+        for required in required_topics:
+            topic_chunks = [chunk for chunk in chunks if required.topic_id in chunk.topic_ids]
+            source_refs = tuple(sorted({chunk.source_id for chunk in topic_chunks}))
+
+            if not topic_chunks:
+                entries.append(
+                    CoverageEntry(
+                        topic_id=required.topic_id,
+                        status=CoverageStatus.MISSING,
+                        source_refs=(),
+                        next_action="propose_sources",
+                    )
+                )
+                continue
+
+            if any(chunk.conflicting for chunk in topic_chunks):
+                # 矛盾を黙って解決しない: 常にhuman reviewへ送る。
+                entries.append(
+                    CoverageEntry(
+                        topic_id=required.topic_id,
+                        status=CoverageStatus.CONFLICT,
+                        source_refs=source_refs,
+                        next_action="human_review_required",
+                    )
+                )
+                continue
+
+            entries.append(
+                CoverageEntry(topic_id=required.topic_id, status=CoverageStatus.COVERED, source_refs=source_refs)
+            )
+
+        return CoverageMap(project_id=project_id, entries=tuple(entries))
+
+
+def analyze_gaps(bundle: SourceAnalysisBundle) -> list[SourceRequirement]:
+    """missing/duplicate/conflictを決定的に抽出する。"""
+    if bundle is None:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "bundle is required")
+
+    requirements: list[SourceRequirement] = []
+    for entry in sorted(bundle.coverage_map.entries, key=lambda item: item.topic_id):
+        if entry.status is CoverageStatus.MISSING:
+            requirements.append(SourceRequirement(topic_id=entry.topic_id, reason="missing"))
+        elif entry.status is CoverageStatus.CONFLICT:
+            requirements.append(SourceRequirement(topic_id=entry.topic_id, reason="conflict"))
+        elif entry.status is CoverageStatus.PARTIALLY_COVERED:
+            requirements.append(SourceRequirement(topic_id=entry.topic_id, reason="partially_covered"))
+
+    # duplicate: 同一chunk_idが複数回入力された場合(データ不整合)を検出する。
+    duplicate_topic_ids: set[str] = set()
+    for entry in bundle.topic_index.entries:
+        counts: dict[str, int] = {}
+        for chunk_ref in entry.chunk_refs:
+            counts[chunk_ref] = counts.get(chunk_ref, 0) + 1
+        if any(count > 1 for count in counts.values()):
+            duplicate_topic_ids.add(entry.topic_id)
+
+    for topic_id in sorted(duplicate_topic_ids):
+        requirements.append(SourceRequirement(topic_id=topic_id, reason="duplicate"))
+
+    return requirements

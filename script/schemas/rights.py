@@ -1,62 +1,164 @@
+"""script/schemas/rights.py — 公開契約: RightsRecord/CreditEntry/DistributionDecision.
+
+Contract: docs/test-cases/TASK-RIGHTS-001-rights-license-and-distribution-gate.md
+Spec: docs/specifications/rights-and-license-management.md
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
 
-"""STEP4 typed source scaffold for script/schemas/rights.py.
+from script.core.errors import AppError, ErrorCode
 
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-RIGHTS-001
-"""
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-RIGHTS-001', 'RightsRecord/CreditEntry/DistributionDecision', '利用目的、確認状態、証拠、creditを型付けする。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-RIGHTS-001-01', 'priority': 'P0', 'layer': 'unit', 'title': '個人学習未確認', 'given': 'personal_learningかつrights unverified', 'when': 'local generationを評価', 'then': '条件付き許可しdistributionは許可しない', 'test_file': '`tests/test_rights_gate.py`'},
-    {'id': 'TC-RIGHTS-001-02', 'priority': 'P0', 'layer': 'unit', 'title': '配布hard gate', 'given': '1資料でもrights未確認', 'when': 'distributionを評価', 'then': 'blockedになり不足項目を列挙する', 'test_file': '`tests/test_credit_manifest.py`'},
-    {'id': 'TC-RIGHTS-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'credit決定性', 'given': '複数の確認済みcredit', 'when': 'manifestを生成', 'then': '安定順で重複なく出力する', 'test_file': '`tests/test_rights_gate.py`'},
-    {'id': 'TC-RIGHTS-001-04', 'priority': 'P1', 'layer': 'unit', 'title': '4 usage purposes', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`RightsRecord/CreditEntry/DistributionDecision`を通じて「4 usage purposes」を実行する', 'then': '「4 usage purposes」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_credit_manifest.py`'},
-    {'id': 'TC-RIGHTS-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'unverified personal local generation許可', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`RightsRecord/CreditEntry/DistributionDecision`を通じて「unverified personal local generation許可」を実行する', 'then': '「unverified personal local generation許可」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_rights_gate.py`'},
-    {'id': 'TC-RIGHTS-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'human confirmation', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`RightsRecord/CreditEntry/DistributionDecision`を通じて「human confirmation」を実行する', 'then': '「human confirmation」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_credit_manifest.py`'},
-    {'id': 'TC-RIGHTS-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'evidence記録', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`RightsRecord/CreditEntry/DistributionDecision`を通じて「evidence記録」を実行する', 'then': '「evidence記録」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_rights_gate.py`'},
-    {'id': 'TC-RIGHTS-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`RightsRecord/CreditEntry/DistributionDecision`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_credit_manifest.py`'},
-    {'id': 'TC-RIGHTS-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`RightsRecord/CreditEntry/DistributionDecision`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_rights_gate.py`'},
-    {'id': 'TC-RIGHTS-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_credit_manifest.py`'},
-)
+class RightsStatus(str, Enum):
+    UNVERIFIED = "unverified"
+    USER_ASSERTED_PRIVATE_USE = "user_asserted_private_use"
+    VERIFIED_OPEN_LICENSE = "verified_open_license"
+    VERIFIED_PUBLIC_DOMAIN = "verified_public_domain"
+    LICENSED_PRIVATE_USE = "licensed_private_use"
+    RESTRICTED = "restricted"
+    NEEDS_LEGAL_REVIEW = "needs_legal_review"
+    REJECTED = "rejected"
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/schemas/rights.py)")
 
-class CreditEntry:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+class UsagePurpose(str, Enum):
+    PERSONAL_LEARNING = "personal_learning"
+    INTERNAL_USE = "internal_use"
+    PUBLIC_DISTRIBUTION = "public_distribution"
+    COMMERCIAL_DISTRIBUTION = "commercial_distribution"
 
-class DistributionDecision:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
 
+class GateDecision(str, Enum):
+    ALLOWED = "allowed"
+    REVIEW_REQUIRED = "review_required"
+    BLOCKED = "blocked"
+
+
+_HUMAN_CONFIRMED_STATUSES = {
+    RightsStatus.VERIFIED_OPEN_LICENSE,
+    RightsStatus.VERIFIED_PUBLIC_DOMAIN,
+    RightsStatus.LICENSED_PRIVATE_USE,
+}
+
+# docs/specifications/rights-and-license-management.md 5.3節 利用目的別ゲート表
+_GATE_TABLE: dict[RightsStatus, dict[UsagePurpose, GateDecision]] = {
+    RightsStatus.UNVERIFIED: {
+        UsagePurpose.PERSONAL_LEARNING: GateDecision.ALLOWED,
+        UsagePurpose.INTERNAL_USE: GateDecision.BLOCKED,
+        UsagePurpose.PUBLIC_DISTRIBUTION: GateDecision.BLOCKED,
+        UsagePurpose.COMMERCIAL_DISTRIBUTION: GateDecision.BLOCKED,
+    },
+    RightsStatus.USER_ASSERTED_PRIVATE_USE: {
+        UsagePurpose.PERSONAL_LEARNING: GateDecision.ALLOWED,
+        UsagePurpose.INTERNAL_USE: GateDecision.REVIEW_REQUIRED,
+        UsagePurpose.PUBLIC_DISTRIBUTION: GateDecision.BLOCKED,
+        UsagePurpose.COMMERCIAL_DISTRIBUTION: GateDecision.BLOCKED,
+    },
+    RightsStatus.VERIFIED_OPEN_LICENSE: {
+        UsagePurpose.PERSONAL_LEARNING: GateDecision.ALLOWED,
+        UsagePurpose.INTERNAL_USE: GateDecision.ALLOWED,
+        UsagePurpose.PUBLIC_DISTRIBUTION: GateDecision.ALLOWED,
+        UsagePurpose.COMMERCIAL_DISTRIBUTION: GateDecision.REVIEW_REQUIRED,
+    },
+    RightsStatus.VERIFIED_PUBLIC_DOMAIN: {
+        UsagePurpose.PERSONAL_LEARNING: GateDecision.ALLOWED,
+        UsagePurpose.INTERNAL_USE: GateDecision.ALLOWED,
+        UsagePurpose.PUBLIC_DISTRIBUTION: GateDecision.ALLOWED,
+        UsagePurpose.COMMERCIAL_DISTRIBUTION: GateDecision.ALLOWED,
+    },
+    RightsStatus.LICENSED_PRIVATE_USE: {
+        UsagePurpose.PERSONAL_LEARNING: GateDecision.ALLOWED,
+        UsagePurpose.INTERNAL_USE: GateDecision.REVIEW_REQUIRED,
+        UsagePurpose.PUBLIC_DISTRIBUTION: GateDecision.BLOCKED,
+        UsagePurpose.COMMERCIAL_DISTRIBUTION: GateDecision.BLOCKED,
+    },
+    RightsStatus.RESTRICTED: {
+        UsagePurpose.PERSONAL_LEARNING: GateDecision.REVIEW_REQUIRED,
+        UsagePurpose.INTERNAL_USE: GateDecision.BLOCKED,
+        UsagePurpose.PUBLIC_DISTRIBUTION: GateDecision.BLOCKED,
+        UsagePurpose.COMMERCIAL_DISTRIBUTION: GateDecision.BLOCKED,
+    },
+    RightsStatus.NEEDS_LEGAL_REVIEW: {
+        UsagePurpose.PERSONAL_LEARNING: GateDecision.REVIEW_REQUIRED,
+        UsagePurpose.INTERNAL_USE: GateDecision.BLOCKED,
+        UsagePurpose.PUBLIC_DISTRIBUTION: GateDecision.BLOCKED,
+        UsagePurpose.COMMERCIAL_DISTRIBUTION: GateDecision.BLOCKED,
+    },
+    RightsStatus.REJECTED: {
+        UsagePurpose.PERSONAL_LEARNING: GateDecision.BLOCKED,
+        UsagePurpose.INTERNAL_USE: GateDecision.BLOCKED,
+        UsagePurpose.PUBLIC_DISTRIBUTION: GateDecision.BLOCKED,
+        UsagePurpose.COMMERCIAL_DISTRIBUTION: GateDecision.BLOCKED,
+    },
+}
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """ライセンス証拠(5.4節)。"""
+
+    license_name: str | None = None
+    license_version: str | None = None
+    source_url: str | None = None
+    retrieved_at: str | None = None
+    evidence_file: str | None = None
+
+
+@dataclass(frozen=True)
+class ConfirmedBy:
+    """状態確認の実施者。AIはverified_*へ確定できない。"""
+
+    type: str
+    name: str | None = None
+    confirmed_at: str | None = None
+
+
+@dataclass(frozen=True)
 class RightsRecord:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """利用目的、権利確認状態、証拠を型付けする。"""
+
+    source_id: str
+    status: RightsStatus
+    usage_purpose: UsagePurpose
+    evidence: Evidence = field(default_factory=Evidence)
+    confirmed_by: ConfirmedBy | None = None
+
+    def __post_init__(self) -> None:
+        if not self.source_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "source_id is required")
+
+        if self.status in _HUMAN_CONFIRMED_STATUSES:
+            if self.confirmed_by is None or self.confirmed_by.type != "human":
+                raise AppError(
+                    ErrorCode.VALIDATION_ERROR,
+                    f"{self.status.value} requires confirmed_by.type == 'human'",
+                )
+            if self.status == RightsStatus.VERIFIED_OPEN_LICENSE and not self.evidence.license_name:
+                raise AppError(
+                    ErrorCode.VALIDATION_ERROR,
+                    "verified_open_license requires evidence.license_name",
+                )
+
+    def gate_decision(self) -> GateDecision:
+        """5.3節ゲート表に基づく判定を返す。"""
+        return _GATE_TABLE[self.status][self.usage_purpose]
+
+
+@dataclass(frozen=True)
+class CreditEntry:
+    """クレジット表記候補(5.7節)。"""
+
+    source_id: str
+    display_text: str
+    required_by_license: bool = False
+
+
+@dataclass(frozen=True)
+class DistributionDecision:
+    """配布gate判定結果。"""
+
+    allowed: bool
+    reasons: tuple[str, ...] = ()
+    review_required: bool = False

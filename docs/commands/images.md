@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-20'
 related_tasks:
 - TASK-IMAGE-001
 - TASK-IMAGE-002
@@ -43,10 +44,14 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_image_ingestion.py` — 現在のダンプでは欠落
-- `tests/test_image_manifest.py` — 現在のダンプでは欠落
-- `tests/test_image_preprocessing.py` — 現在のダンプでは欠落
-- `tests/test_image_quality_flags.py` — 現在のダンプでは欠落
+- `tests/test_image_ingestion.py`
+- `tests/test_image_manifest.py`
+- `tests/test_image_preprocessing.py` — 現在のダンプでは欠落(`TASK-IMAGE-002`未着手)
+- `tests/test_image_quality_flags.py` — 現在のダンプでは欠落(`TASK-IMAGE-002`未着手)
+
+現在の存在有無は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。`TASK-IMAGE-001`は
+本実装済みであり、対象10ケース(TC-IMAGE-001-01〜10)はpassする。`TASK-IMAGE-002`は
+未着手であり、対応するtest fileはSTEP3の`xfail(strict=True)`のままである。
 
 ## 5. 収集・型確認
 

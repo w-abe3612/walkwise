@@ -1,54 +1,168 @@
-from __future__ import annotations
+"""script/source_processing/images/ingestion.py — 公開契約: ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/source_processing/images/ingestion.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-IMAGE-001
+Contract: docs/test-cases/TASK-IMAGE-001-image-material-registration-and-manifest.md
+Spec: docs/specifications/image-material-ingestion.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-IMAGE-001', 'ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult', '画像を検証し決定的順序でimmutable登録する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-IMAGE-001-01', 'priority': 'P0', 'layer': 'unit', 'title': '自然順', 'given': 'page1,page2,page10のファイル', 'when': 'ingestする', 'then': 'natural orderで1,2,10となる', 'test_file': '`tests/test_image_ingestion.py`'},
-    {'id': 'TC-IMAGE-001-02', 'priority': 'P0', 'layer': 'unit', 'title': '明示順', 'given': 'explicit orderを指定', 'when': 'ingestする', 'then': '指定順を採用し重複/欠落を拒否する', 'test_file': '`tests/test_image_manifest.py`'},
-    {'id': 'TC-IMAGE-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'EXIF privacy', 'given': '位置情報付きJPEG', 'when': 'manifest/exportを作る', 'then': '内部warningは保持しても公開成果物に位置情報を含めない', 'test_file': '`tests/test_image_ingestion.py`'},
-    {'id': 'TC-IMAGE-001-04', 'priority': 'P1', 'layer': 'unit', 'title': '形式検証', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult`を通じて「形式検証」を実行する', 'then': '正常値を受理し、仕様違反を副作用前に検出して具体的なerror codeを返す。', 'test_file': '`tests/test_image_manifest.py`'},
-    {'id': 'TC-IMAGE-001-05', 'priority': 'P1', 'layer': 'unit', 'title': '壊れた画像検出', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult`を通じて「壊れた画像検出」を実行する', 'then': '「壊れた画像検出」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_image_ingestion.py`'},
-    {'id': 'TC-IMAGE-001-06', 'priority': 'P1', 'layer': 'unit', 'title': '原画像immutable copy', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult`を通じて「原画像immutable copy」を実行する', 'then': '処理前後で入力ファイルのbyte列とSHA-256が一致し、派生物だけが新規作成される。', 'test_file': '`tests/test_image_manifest.py`'},
-    {'id': 'TC-IMAGE-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'hash', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult`を通じて「hash」を実行する', 'then': '同一の正規化入力から同一SHA-256を返し、内容差分があればhashが変化する。', 'test_file': '`tests/test_image_ingestion.py`'},
-    {'id': 'TC-IMAGE-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_image_manifest.py`'},
-    {'id': 'TC-IMAGE-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_image_ingestion.py`'},
-    {'id': 'TC-IMAGE-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_image_manifest.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/source_processing/images/ingestion.py)")
+import hashlib
+import re
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
+from PIL import Image
+
+from script.core.errors import AppError, ErrorCode
+from script.persistence.files import copy_immutable
+from script.source_processing.images.manifest import PageEntry, build_image_manifest
+
+# image-material-ingestion.md 5.1節: 初期必須形式。
+_SUPPORTED_FORMATS = frozenset({"PNG", "JPEG", "TIFF"})
+_JPEG_LIKE_FORMATS_WITH_EXIF = frozenset({"JPEG", "TIFF"})
+_DIGIT_RE = re.compile(r"(\d+)")
+_GPS_EXIF_TAG_ID = 34853  # PIL.ExifTags: "GPSInfo"
+
+
+@dataclass(frozen=True)
 class ImageIngestionResult:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """ingest結果。manifestは公開成果物であり位置情報等の生値を含まない。"""
+
+    pages: tuple[PageEntry, ...]
+    manifest: dict[str, Any]
+    warnings: tuple[str, ...] = ()
+
+
+def _natural_sort_key(path: Path) -> list[Any]:
+    return [int(part) if part.isdigit() else part.lower() for part in _DIGIT_RE.split(path.name)]
+
+
+def _validate_image(path: Path) -> str:
+    """形式検証と壊れた画像検出(image-material-ingestion.md 13節Error)を行う。"""
+    if path.stat().st_size == 0:
+        raise AppError(ErrorCode.VALIDATION_ERROR, f"image file is empty (0 byte): {path}")
+
+    try:
+        with Image.open(path) as probe:
+            probe.verify()
+    except Exception as exc:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            f"corrupted or unreadable image: {path}",
+            technical_detail=str(exc),
+        ) from exc
+
+    try:
+        with Image.open(path) as probe:
+            image_format = probe.format
+    except Exception as exc:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            f"corrupted or unreadable image: {path}",
+            technical_detail=str(exc),
+        ) from exc
+
+    if image_format not in _SUPPORTED_FORMATS:
+        raise AppError(ErrorCode.VALIDATION_ERROR, f"unsupported image format: {image_format} ({path})")
+    return image_format
+
+
+def _has_exif_gps_location(path: Path, image_format: str) -> bool:
+    """位置情報の有無だけを検出し、実際のGPS値は一切保持・返却しない。"""
+    if image_format not in _JPEG_LIKE_FORMATS_WITH_EXIF:
+        return False
+    try:
+        with Image.open(path) as probe:
+            exif = probe.getexif()
+    except Exception:
+        return False
+    return bool(exif) and _GPS_EXIF_TAG_ID in exif
+
+
+def _apply_explicit_order(input_paths: list[Path], explicit_order: Sequence[Any]) -> list[Path]:
+    ordered = [Path(item) for item in explicit_order]
+    ordered_keys = [str(path.resolve()) for path in ordered]
+    if len(ordered_keys) != len(set(ordered_keys)):
+        raise AppError(ErrorCode.VALIDATION_ERROR, "explicit_order contains duplicate entries")
+
+    input_keys = {str(path.resolve()) for path in input_paths}
+    if set(ordered_keys) != input_keys:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "explicit_order must be exactly a permutation of paths (no missing or extra entries)",
+        )
+    return ordered
+
+
+def _copy_original_immutable(source: Path, destination: Path) -> str:
+    """originalへの上書きを拒否しつつ、同一内容での再実行は冪等に成功させる。"""
+    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+    if destination.exists():
+        existing_hash = hashlib.sha256(destination.read_bytes()).hexdigest()
+        if existing_hash != source_hash:
+            raise AppError(
+                ErrorCode.CONFLICT,
+                f"cannot overwrite existing original with different content: {destination}",
+            )
+        return existing_hash
+    digest = copy_immutable(source, destination)
+    return digest.value
+
 
 class ImageIngestionService:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def ingest(self, paths: Any, *, explicit_order: Any = None) -> ImageIngestionResult:
-        """画像を検証し決定的順序でimmutable登録する。
+    """PNG/JPEG/TIFFの画像群を検証し、決定的順序でimmutable登録する。"""
 
-        Public contract: ``ImageIngestionService.ingest(paths, *, explicit_order=None) -> ImageIngestionResult``.
-        """
-        _step4_unimplemented('ImageIngestionService.ingest')
+    def __init__(self, destination_dir: Path) -> None:
+        if not destination_dir:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "destination_dir is required")
+        self._destination_dir = Path(destination_dir)
+
+    def ingest(self, paths: Sequence[Any], *, explicit_order: Sequence[Any] | None = None) -> ImageIngestionResult:
+        """画像を検証し決定的順序でimmutable登録する。"""
+        if not paths:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "paths must not be empty")
+
+        input_paths = [Path(item) for item in paths]
+        for path in input_paths:
+            if not path.is_file():
+                raise AppError(ErrorCode.NOT_FOUND, f"image source file does not exist: {path}")
+
+        global_warnings: list[str] = []
+        if explicit_order is not None:
+            ordered_paths = _apply_explicit_order(input_paths, explicit_order)
+        else:
+            ordered_paths = sorted(input_paths, key=_natural_sort_key)
+            # image-material-ingestion.md 9節: natural sortのみでの確定は人間プレビュー必須。
+            global_warnings.append("order_requires_human_preview")
+
+        # 副作用(コピー)を開始する前に全件を検証する(1件でも不正なら何も書き込まない)。
+        validated_formats = [_validate_image(path) for path in ordered_paths]
+
+        entries: list[PageEntry] = []
+        for page_index, (path, image_format) in enumerate(zip(ordered_paths, validated_formats), start=1):
+            image_id = f"image-{page_index:06d}"
+            destination = self._destination_dir / f"original-{page_index:06d}{path.suffix.lower()}"
+            content_hash = _copy_original_immutable(path, destination)
+
+            quality_flags: list[str] = []
+            if _has_exif_gps_location(path, image_format):
+                quality_flags.append("exif_location_present")
+
+            entries.append(
+                PageEntry(
+                    page_index=page_index,
+                    image_id=image_id,
+                    original_path=str(destination),
+                    content_hash=content_hash,
+                    locator=None,
+                    quality_flags=tuple(quality_flags),
+                )
+            )
+
+        manifest = build_image_manifest(entries)
+        all_warnings = tuple(global_warnings) + tuple(
+            flag for entry in entries for flag in entry.quality_flags
+        )
+        return ImageIngestionResult(pages=tuple(entries), manifest=manifest, warnings=all_warnings)

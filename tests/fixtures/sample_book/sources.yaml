@@ -1,0 +1,14 @@
+schema_version: "1.0"
+sources:
+  - source_id: source-official-guide
+    title: "公式ガイド: サンプル技術解説"
+    role: primary_evidence
+    provides_curriculum_structure: false
+  - source_id: source-free-textbook
+    title: "無料教材: サンプル入門"
+    role: primary_evidence
+    provides_curriculum_structure: true
+  - source_id: source-public-toc
+    title: "公開目次: サンプル書籍目次"
+    role: curriculum_structure_only
+    provides_curriculum_structure: true

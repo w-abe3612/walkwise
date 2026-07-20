@@ -1,0 +1,6 @@
+schema_version: "1.0"
+claims_override:
+  claim-03-limitation:
+    status: conflict
+    conflict:
+      source_ids: ["source-official-guide", "source-free-textbook"]

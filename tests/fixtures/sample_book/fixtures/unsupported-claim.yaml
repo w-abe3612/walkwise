@@ -1,0 +1,9 @@
+schema_version: "1.0"
+claims_add:
+  - claim_id: claim-05-unsupported
+    segment_id: segment-08
+    statement: "公開目次だけを根拠にした主張(不正)。"
+    claim_type: technical_fact
+    status: pending
+    source_evidence:
+      - source_id: source-public-toc

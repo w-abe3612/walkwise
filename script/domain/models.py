@@ -1,81 +1,88 @@
-from __future__ import annotations
+"""script/domain/models.py — 公開契約: Project, Source, BuildRequest, Job, Artifact.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/domain/models.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-DOMAIN-001
+Contract: docs/test-cases/TASK-DOMAIN-001-domain-entities-and-validation.md
+Spec: docs/db/01-projects-table.md 〜 05-artifacts-table.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-DOMAIN-001', 'Project, Source, BuildRequest, Job, Artifact', 'DBやUIに依存しないfrozen dataclassとして表現する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-DOMAIN-001-01', 'priority': 'P0', 'layer': 'unit', 'title': '複数出力canonical', 'given': '`text, mp3`の入力', 'when': 'BuildRequestを生成する', 'then': 'formatsはmp3,text順で保持される', 'test_file': '`tests/test_domain_models.py`'},
-    {'id': 'TC-DOMAIN-001-02', 'priority': 'P0', 'layer': 'unit', 'title': 'voice条件', 'given': 'text-onlyとmp3を含む入力', 'when': 'validationを行う', 'then': 'text-onlyはvoice null可、mp3はnull拒否', 'test_file': '`tests/test_domain_validation.py`'},
-    {'id': 'TC-DOMAIN-001-03', 'priority': 'P1', 'layer': 'unit', 'title': 'dataclass/enum', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`PlanningStage/SourceStatus/BuildStatus/JobStatus/ArtifactType`を通じて「dataclass/enum」を実行する', 'then': '「dataclass/enum」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_domain_models.py`'},
-    {'id': 'TC-DOMAIN-001-04', 'priority': 'P1', 'layer': 'unit', 'title': '必須項目', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`PlanningStage/SourceStatus/BuildStatus/JobStatus/ArtifactType`を通じて「必須項目」を実行する', 'then': '「必須項目」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_domain_validation.py`'},
-    {'id': 'TC-DOMAIN-001-05', 'priority': 'P1', 'layer': 'unit', 'title': '状態列挙', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`PlanningStage/SourceStatus/BuildStatus/JobStatus/ArtifactType`を通じて「状態列挙」を実行する', 'then': '承認済み状態遷移表にある遷移だけが成功し、不正遷移では永続状態を変更しない。', 'test_file': '`tests/test_domain_models.py`'},
-    {'id': 'TC-DOMAIN-001-06', 'priority': 'P1', 'layer': 'unit', 'title': '相対path value object', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`PlanningStage/SourceStatus/BuildStatus/JobStatus/ArtifactType`を通じて「相対path value object」を実行する', 'then': '保存値はProject root基準の相対pathとなり、絶対path・root外escapeは拒否される。', 'test_file': '`tests/test_domain_validation.py`'},
-    {'id': 'TC-DOMAIN-001-07', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`PlanningStage/SourceStatus/BuildStatus/JobStatus/ArtifactType`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_domain_models.py`'},
-    {'id': 'TC-DOMAIN-001-08', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`PlanningStage/SourceStatus/BuildStatus/JobStatus/ArtifactType`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_domain_validation.py`'},
-    {'id': 'TC-DOMAIN-001-09', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_domain_models.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/domain/models.py)")
+from dataclasses import dataclass
 
-class Artifact:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+from script.domain.enums import ArtifactType, BuildStatus, JobStatus, PlanningStage, SourceStatus
+from script.domain.validation import _assert_relative_path, canonicalize_output_formats, validate_build_request
 
-class BuildRequest:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
 
-class Job:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
-
+@dataclass(frozen=True)
 class Project:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    project_id: str
+    title: str
+    domain: str
+    planning_stage: PlanningStage
+    content_revision: int
+    plan_file_path: str
+    created_at: str
+    updated_at: str
+    archived_at: str | None = None
 
+    def __post_init__(self) -> None:
+        _assert_relative_path("plan_file_path", self.plan_file_path)
+
+
+@dataclass(frozen=True)
 class Source:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    source_id: str
+    project_id: str
+    media_type: str
+    status: SourceStatus
+    original_file_path: str
+    content_hash: str
+    created_at: str
+    updated_at: str
+
+    def __post_init__(self) -> None:
+        _assert_relative_path("original_file_path", self.original_file_path)
+
+
+@dataclass(frozen=True)
+class BuildRequest:
+    build_request_id: str
+    project_id: str
+    output_formats: tuple[str, ...]
+    status: BuildStatus
+    created_at: str
+    updated_at: str
+    voice_profile_id: str | None = None
+
+    def __post_init__(self) -> None:
+        canonical = canonicalize_output_formats(self.output_formats)
+        object.__setattr__(self, "output_formats", canonical)
+        validate_build_request(canonical, self.voice_profile_id)
+
+
+@dataclass(frozen=True)
+class Job:
+    job_id: str
+    build_request_id: str
+    job_type: str
+    status: JobStatus
+    parent_job_id: str | None = None
+    progress_current: int | None = None
+    progress_total: int | None = None
+    last_message: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
+@dataclass(frozen=True)
+class Artifact:
+    artifact_id: str
+    job_id: str
+    project_id: str
+    artifact_type: ArtifactType
+    file_path: str
+    version_number: int
+    content_hash: str
+    created_at: str
+
+    def __post_init__(self) -> None:
+        _assert_relative_path("file_path", self.file_path)

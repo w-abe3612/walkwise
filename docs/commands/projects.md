@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
+version: '1.1'
 last_updated: '2026-07-19'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-19'
 related_tasks:
 - TASK-PROJECT-001
 release_scopes:
@@ -40,8 +41,11 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_project_plan_schema.py` — 現在のダンプでは欠落
-- `tests/test_project_service.py` — 現在のダンプでは欠落
+- `tests/test_project_plan_schema.py`
+- `tests/test_project_service.py`
+
+現在の存在有無は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。`TASK-PROJECT-001`は
+本実装済みであり、対象7ケース(TC-PROJECT-001-01〜07)はpassする。
 
 ## 5. 収集・型確認
 

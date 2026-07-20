@@ -75,9 +75,21 @@ def _unimplemented_connectivity_gate(name: str) -> None:
 
 
 @pytest.fixture(scope="session")
-def asr_connectivity_gate() -> None:
-    """Placeholder gate: never performs external I/O in STEP3."""
-    _unimplemented_connectivity_gate("asr_connectivity_gate")
+def asr_connectivity_gate():
+    """TASK-ASR-001: WALKWISE_ASR_ENABLEDの設定確認とlocal ASR runtimeの疎通確認を行う。
+
+    設定未確認はskip(config-check)、設定済みで起動不能な場合はfail(疎通失敗)とする。
+    音声文字起こし・課金の大きい処理は行わない。
+    """
+    from script.asr.base import LocalWhisperCompatibleClient
+
+    require_environment("WALKWISE_ASR_ENABLED")
+    command = os.environ.get("WALKWISE_ASR_COMMAND", "whisper")
+    client = LocalWhisperCompatibleClient(command=command)
+    result = client.check_connectivity()
+    if not result.available:
+        pytest.fail(f"asr connectivity check failed: {result.error}")
+    return result
 
 
 @pytest.fixture(scope="session")
@@ -87,39 +99,125 @@ def coeiroink_connectivity_gate() -> None:
 
 
 @pytest.fixture(scope="session")
-def desktop_connectivity_gate() -> None:
-    """Placeholder gate: never performs external I/O in STEP3."""
-    _unimplemented_connectivity_gate("desktop_connectivity_gate")
+def desktop_connectivity_gate() -> dict[str, object]:
+    """TASK-DESKTOP-003: Desktop統合runtime(python worker実行体)の疎通確認を行う。
+
+    設定未確認はskip(config-check)、設定済みで起動不能な場合はfail(疎通失敗)とする。
+    実Electronアプリの起動は行わず、python worker実行体の起動可否とimport可否のみを
+    確認する(作品生成・DB更新・課金の大きい処理は行わない)。
+    """
+    import subprocess
+
+    python_executable = require_environment("WALKWISE_PYTHON_EXECUTABLE")
+    result = subprocess.run(
+        [python_executable, "-c", "import script.worker.cli, script.persistence.database"],
+        capture_output=True,
+        timeout=15,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.fail(f"desktop connectivity check failed: worker runtime import check failed (exit={result.returncode})")
+    return {"available": True}
 
 
 @pytest.fixture(scope="session")
-def ffmpeg_connectivity_gate() -> None:
-    """Placeholder gate: never performs external I/O in STEP3."""
-    _unimplemented_connectivity_gate("ffmpeg_connectivity_gate")
+def ffmpeg_connectivity_gate():
+    """TASK-AUDIO-002: FFMPEG_PATH/FFPROBE_PATHの設定確認と`-version`疎通確認を行う。
+
+    設定未確認はskip(config-check)、設定済みで起動不能な場合はfail(疎通失敗)とする。
+    音声測定・課金の大きい処理は行わない。
+    """
+    from script.audio.measurements import AudioMeasurementAdapter
+
+    ffmpeg_cmd = require_environment("FFMPEG_PATH")
+    ffprobe_cmd = require_environment("FFPROBE_PATH")
+    adapter = AudioMeasurementAdapter(ffmpeg_cmd=ffmpeg_cmd, ffprobe_cmd=ffprobe_cmd)
+    result = adapter.check_runtime()
+    if not result.available:
+        pytest.fail(f"ffmpeg/ffprobe connectivity check failed: {result.detail}")
+    return result
 
 
 @pytest.fixture(scope="session")
-def gemini_connectivity_gate() -> None:
-    """Placeholder gate: never performs external I/O in STEP3."""
-    _unimplemented_connectivity_gate("gemini_connectivity_gate")
+def gemini_connectivity_gate():
+    """TASK-AI-001: GEMINI_API_KEYの設定確認と軽量なmetadata疎通確認を行う。
+
+    設定未確認はskip(config-check)、設定済みで接続不能な場合はfail(疎通失敗)とする。
+    生成本文は要求しない(課金の大きい処理を行わない)。
+    """
+    from script.ai_clients.gemini.client import GeminiClient
+
+    api_key = require_environment("GEMINI_API_KEY")
+    client = GeminiClient(api_key=api_key)
+    result = client.check_connectivity()
+    if not result.available:
+        pytest.fail(f"gemini connectivity check failed: {result.detail}")
+    return result
 
 
 @pytest.fixture(scope="session")
-def release_runtime_connectivity_gate() -> None:
-    """Placeholder gate: never performs external I/O in STEP3."""
-    _unimplemented_connectivity_gate("release_runtime_connectivity_gate")
+def release_runtime_connectivity_gate() -> dict[str, object]:
+    """TASK-RELEASE-001: 配布runtime群(Python/ffmpeg/ffprobe/Tesseract)のversion疎通確認を行う。
+
+    どのruntime環境変数も未設定ならskip(config-check)。設定されたruntimeのうち
+    1つでもversion取得に失敗すればfail(疎通失敗)。生成物・DB更新・課金の大きい
+    処理は行わない。
+    """
+    import subprocess
+
+    env_names = ("WALKWISE_PYTHON_EXECUTABLE", "FFMPEG_PATH", "FFPROBE_PATH", "TESSERACT_CMD")
+    configured = {name: os.environ[name] for name in env_names if os.environ.get(name)}
+    if not configured:
+        pytest.skip(
+            "release_runtime_connectivity_gate requires at least one of "
+            "WALKWISE_PYTHON_EXECUTABLE/FFMPEG_PATH/FFPROBE_PATH/TESSERACT_CMD to be set"
+        )
+
+    versions: dict[str, str] = {}
+    for env_name, command in configured.items():
+        try:
+            completed = subprocess.run([command, "--version"], capture_output=True, text=True, timeout=15)
+        except OSError as exc:
+            pytest.fail(f"release runtime connectivity check failed for {env_name}: {exc}")
+        if completed.returncode != 0:
+            pytest.fail(f"release runtime connectivity check failed for {env_name}: exit code {completed.returncode}")
+        versions[env_name] = (completed.stdout or completed.stderr).strip()
+
+    return {"available": True, "versions": versions}
 
 
 @pytest.fixture(scope="session")
-def tesseract_connectivity_gate() -> None:
-    """Placeholder gate: never performs external I/O in STEP3."""
-    _unimplemented_connectivity_gate("tesseract_connectivity_gate")
+def tesseract_connectivity_gate():
+    """TASK-OCR-001: TESSERACT_CMDの設定確認とtesseract --versionの疎通確認を行う。
+
+    設定未確認はskip(config-check)、設定済みで接続不能な場合はfail(疎通失敗)とする。
+    画像処理・課金の大きい処理は行わない。
+    """
+    from script.source_processing.ocr.client import OcrClient
+
+    tesseract_cmd = require_environment("TESSERACT_CMD")
+    client = OcrClient(tesseract_cmd=tesseract_cmd)
+    health = client.check_runtime()
+    if not health.available:
+        pytest.fail(f"tesseract connectivity check failed: {health.error}")
+    return health
 
 
 @pytest.fixture(scope="session")
-def voicevox_connectivity_gate() -> None:
-    """Placeholder gate: never performs external I/O in STEP3."""
-    _unimplemented_connectivity_gate("voicevox_connectivity_gate")
+def voicevox_connectivity_gate():
+    """TASK-VOICEVOX-001: VOICEVOX_URLの設定確認とGET /speakersの疎通確認を行う。
+
+    設定未確認はskip(config-check)、設定済みで接続不能な場合はfail(疎通失敗)とする。
+    音声合成・課金の大きい処理は行わない。
+    """
+    from script.tts_clients.voicevox.client import VoicevoxHttpClient
+
+    base_url = require_environment("VOICEVOX_URL")
+    client = VoicevoxHttpClient(base_url=base_url)
+    result = client.check_connectivity()
+    if not result.available:
+        pytest.fail(f"voicevox connectivity check failed: {result.detail}")
+    return result
 
 
 @pytest.fixture(scope="session")

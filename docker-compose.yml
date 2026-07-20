@@ -10,3 +10,20 @@ services:
     environment:
       WALKWISE_RUN_INTEGRATION_SMOKE: "0"
       WALKWISE_RUN_INTEGRATION_LIVE: "0"
+  test-live:
+    build:
+      context: .
+      target: test
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: ["python", "-m", "pytest", "-ra", "-m", "integration_smoke or integration_live"]
+    environment:
+      WALKWISE_RUN_INTEGRATION_SMOKE: "${WALKWISE_RUN_INTEGRATION_SMOKE:-0}"
+      WALKWISE_RUN_INTEGRATION_LIVE: "${WALKWISE_RUN_INTEGRATION_LIVE:-0}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      VOICEVOX_URL: "${VOICEVOX_URL:-}"
+      TESSERACT_CMD: "${TESSERACT_CMD:-}"
+      FFMPEG_PATH: "${FFMPEG_PATH:-}"
+      FFPROBE_PATH: "${FFPROBE_PATH:-}"
+      WALKWISE_ASR_ENABLED: "${WALKWISE_ASR_ENABLED:-}"

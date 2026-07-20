@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-20'
 related_tasks:
 - TASK-AI-001
 - TASK-AI-002
@@ -43,11 +44,18 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_ai_budget.py` — 現在のダンプでは欠落
-- `tests/test_ai_cache.py` — 現在のダンプでは欠落
-- `tests/test_ai_client_contract.py` — 現在のダンプでは欠落
-- `tests/test_ai_routing.py` — 現在のダンプでは欠落
-- `tests/test_gemini_client.py` — 現在のダンプでは欠落
+- `tests/test_ai_client_contract.py`
+- `tests/test_gemini_client.py`
+- `tests/test_ai_budget.py` — 現在のダンプでは欠落(`TASK-AI-002`未着手)
+- `tests/test_ai_cache.py` — 現在のダンプでは欠落(`TASK-AI-002`未着手)
+- `tests/test_ai_routing.py` — 現在のダンプでは欠落(`TASK-AI-002`未着手)
+
+現在の存在有無は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。`TASK-AI-001`は
+本実装済みであり、外部接続なしの対象10ケース(TC-AI-001-01〜10)はpassする。
+`TC-AI-001-11`(integration_smoke)/`TC-AI-001-12`(integration_live)は
+`GEMINI_API_KEY`が未設定のためこの環境では未確認であり、既定でskipされる。
+`TASK-AI-002`は未着手であり、対応するtest fileはSTEP3の`xfail(strict=True)`の
+ままである。
 
 ## 5. 収集・型確認
 

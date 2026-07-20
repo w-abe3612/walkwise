@@ -1,120 +1,129 @@
 <script setup lang="ts">
 /**
- * STEP4 Vue scaffold for electron/renderer/screens/BuildSettings.vue.
- * The approved UI contract and related test cases are recorded below.
+ * electron/renderer/screens/BuildSettings.vue — 公開契約: build settings UI.
+ *
+ * Contract: docs/test-cases/TASK-UI-003-build-settings-and-voice-preview-screen.md
+ * Spec: docs/screens/03-build-settings.md
+ *
+ * router/store(TASK-UI-005)へ依存せず、実際のIPC呼び出しはpropsとして注入する。
  */
-const step4PublicContracts = [
-  {
-    "taskId": "TASK-UI-003",
-    "symbol": "build settings UI",
-    "contract": "複数形式、voice disabled、試聴、制作開始を扱う。"
-  }
-] as const;
-const step4TestCases = [
-  {
-    "id": "TC-UI-003-01",
-    "priority": "P0",
-    "layer": "unit",
-    "title": "text-only",
-    "given": "textだけ選択",
-    "when": "render/submit",
-    "then": "voice controls disabledで制作開始可能",
-    "testFile": "`electron/tests/build_voice_ipc.test.ts`"
-  },
-  {
-    "id": "TC-UI-003-02",
-    "priority": "P0",
-    "layer": "unit",
-    "title": "mp3条件",
-    "given": "mp3選択・speaker未選択",
-    "when": "render",
-    "then": "制作開始disabled",
-    "testFile": "`electron/renderer/tests/BuildSettings.test.ts`"
-  },
-  {
-    "id": "TC-UI-003-03",
-    "priority": "P0",
-    "layer": "integration_mock",
-    "title": "VOICEVOX疎通",
-    "given": "engine未接続",
-    "when": "画面表示",
-    "then": "明確なerrorと再確認導線、Buildは開始しない",
-    "testFile": "`electron/tests/build_voice_ipc.test.ts`"
-  },
-  {
-    "id": "TC-UI-003-04",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "engine health/list",
-    "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態",
-    "when": "`voice:list-engines/preview handlers`を通じて「engine health/list」を実行する",
-    "then": "必要項目を欠かさず安定順で返し、空一覧も正常結果として扱う。",
-    "testFile": "`electron/renderer/tests/BuildSettings.test.ts`"
-  },
-  {
-    "id": "TC-UI-003-05",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "preview",
-    "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態",
-    "when": "`voice:list-engines/preview handlers`を通じて「preview」を実行する",
-    "then": "「preview」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。",
-    "testFile": "`electron/tests/build_voice_ipc.test.ts`"
-  },
-  {
-    "id": "TC-UI-003-06",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "approval gate error導線",
-    "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態",
-    "when": "`voice:list-engines/preview handlers`を通じて「approval gate error導線」を実行する",
-    "then": "必要な承認が揃う場合だけ後工程へ進み、未承認・invalidated・changes_requestedでは安定errorで停止する。",
-    "testFile": "`electron/renderer/tests/BuildSettings.test.ts`"
-  },
-  {
-    "id": "TC-UI-003-07",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "MVP外機能非表示",
-    "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態",
-    "when": "`voice:list-engines/preview handlers`を通じて「MVP外機能非表示」を実行する",
-    "then": "「MVP外機能非表示」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。",
-    "testFile": "`electron/tests/build_voice_ipc.test.ts`"
-  },
-  {
-    "id": "TC-UI-003-08",
-    "priority": "P0",
-    "layer": "unit",
-    "title": "必須入力欠落",
-    "given": "主ID、必須path、必須設定のいずれかが欠落した入力",
-    "when": "`voice:list-engines/preview handlers`を実行する",
-    "then": "副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。",
-    "testFile": "`electron/renderer/tests/BuildSettings.test.ts`"
-  },
-  {
-    "id": "TC-UI-003-09",
-    "priority": "P1",
-    "layer": "unit",
-    "title": "再実行時の決定性",
-    "given": "同じ入力、同じ設定、同じ依存応答",
-    "when": "`voice:list-engines/preview handlers`を2回実行する",
-    "then": "仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。",
-    "testFile": "`electron/tests/build_voice_ipc.test.ts`"
-  }
-] as const;
+import { computed, reactive, ref } from "vue";
+import type { EngineHealthView, OutputFormat, SpeakerOptionView } from "./BuildSettings.types";
 
-function step4Unimplemented(): never {
-  throw new Error("STEP4 source scaffold is not implemented: electron/renderer/screens/BuildSettings.vue");
+const props = defineProps<{
+  engineHealth: EngineHealthView | null; // null = 接続確認中(loading)
+  speakers: readonly SpeakerOptionView[];
+  preview: (speakerId: string, text: string) => Promise<unknown>;
+  createBuildRequest: (input: { outputFormats: OutputFormat[]; voiceProfileId?: string }) => Promise<unknown>;
+  startJob: (buildRequestId: string) => Promise<unknown>;
+}>();
+
+const selectedFormats = reactive<Record<OutputFormat, boolean>>({ mp3: false, text: false });
+const selectedSpeakerId = ref("");
+const speedScale = ref(1.0);
+const submitError = ref("");
+const showApprovalLink = ref(false);
+
+const mp3Selected = computed(() => selectedFormats.mp3);
+// 03-build-settings.md 7節: VOICEVOX未接続の間はMP3出力を選択できない。
+const voiceControlsDisabled = computed(() => !mp3Selected.value || !props.engineHealth?.available);
+
+const isSubmitEnabled = computed(() => {
+  const anyFormatSelected = selectedFormats.mp3 || selectedFormats.text;
+  if (!anyFormatSelected) {
+    return false;
+  }
+  if (selectedFormats.mp3 && !selectedSpeakerId.value) {
+    return false;
+  }
+  return true;
+});
+
+function toggleFormat(format: OutputFormat): void {
+  selectedFormats[format] = !selectedFormats[format];
+  if (format === "mp3" && !selectedFormats.mp3) {
+    selectedSpeakerId.value = "";
+  }
 }
 
-void step4PublicContracts;
-void step4TestCases;
-void step4Unimplemented;
+async function submitPreview(): Promise<void> {
+  if (voiceControlsDisabled.value || !selectedSpeakerId.value) {
+    return;
+  }
+  await props.preview(selectedSpeakerId.value, "プレビュー用サンプルテキスト");
+}
+
+async function submitBuild(): Promise<void> {
+  if (!isSubmitEnabled.value) {
+    return;
+  }
+  submitError.value = "";
+  showApprovalLink.value = false;
+  const outputFormats = (Object.keys(selectedFormats) as OutputFormat[]).filter((f) => selectedFormats[f]);
+  try {
+    const buildRequest = (await props.createBuildRequest({
+      outputFormats,
+      voiceProfileId: selectedFormats.mp3 ? selectedSpeakerId.value : undefined,
+    })) as { buildRequestId: string };
+    await props.startJob(buildRequest.buildRequestId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    submitError.value = message;
+    if (message.includes("approval_gate_not_satisfied")) {
+      showApprovalLink.value = true;
+    }
+  }
+}
+
+defineExpose({ isSubmitEnabled, voiceControlsDisabled, submitBuild, submitPreview });
 </script>
 
 <template>
-  <section data-step4-scaffold="BuildSettings" aria-busy="true">
-    <h1>BuildSettings</h1>
-    <p>STEP4 source scaffold. Claude Code will implement this approved screen contract.</p>
+  <section aria-label="出力・声設定">
+    <div v-if="engineHealth === null" data-testid="engine-loading" role="status">VOICEVOX接続確認中…</div>
+    <div v-else-if="!engineHealth.available" data-testid="engine-error" role="alert">
+      <p>VOICEVOX Engineに接続できません。</p>
+      <button type="button" data-testid="engine-retry">再確認</button>
+    </div>
+    <div v-else data-testid="engine-success">
+      <p>VOICEVOX Engine接続済み</p>
+    </div>
+
+    <fieldset data-testid="output-format-fieldset">
+      <label>
+        <input type="checkbox" data-testid="format-mp3" :checked="selectedFormats.mp3" @change="toggleFormat('mp3')" />
+        MP3
+      </label>
+      <label>
+        <input type="checkbox" data-testid="format-text" :checked="selectedFormats.text" @change="toggleFormat('text')" />
+        テキスト
+      </label>
+    </fieldset>
+
+    <select v-model="selectedSpeakerId" data-testid="speaker-select" :disabled="voiceControlsDisabled">
+      <option value="" disabled>speakerを選択</option>
+      <option v-for="speaker in speakers" :key="speaker.speakerId" :value="speaker.speakerId">
+        {{ speaker.displayName }}
+      </option>
+    </select>
+
+    <input
+      v-model.number="speedScale"
+      type="range"
+      min="0.5"
+      max="2.0"
+      step="0.1"
+      data-testid="speed-slider"
+      :disabled="voiceControlsDisabled"
+    />
+
+    <button type="button" data-testid="preview-button" :disabled="voiceControlsDisabled || !selectedSpeakerId" @click="submitPreview">
+      試聴
+    </button>
+
+    <p v-if="submitError" role="alert" data-testid="submit-error">{{ submitError }}</p>
+    <a v-if="showApprovalLink" href="#" data-testid="approval-link">承認画面へ</a>
+
+    <button type="button" data-testid="submit-button" :disabled="!isSubmitEnabled" @click="submitBuild">制作開始</button>
   </section>
 </template>

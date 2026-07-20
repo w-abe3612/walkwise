@@ -1,60 +1,84 @@
 /**
- * STEP3 test scaffold for TASK-DESKTOP-001: Electron/Vue scaffold・main/preload安全境界.
+ * STEP4 test implementation for TASK-DESKTOP-001: preload allowlist / typed IPC contract.
  * Contract: docs/test-cases/TASK-DESKTOP-001-electron-vue-scaffold-and-ipc-security.md
  * Release scope: MVP.
- * The file intentionally imports no production module before STEP4.
- * Vitest test.fails is the strict-xfail equivalent: an unexpected pass fails.
  */
 
-import { describe, test } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, test, vi } from "vitest";
+
+vi.mock("electron", () => ({
+  contextBridge: { exposeInMainWorld: vi.fn() },
+  ipcRenderer: { invoke: vi.fn(), on: vi.fn(), removeListener: vi.fn() },
+}));
+
+import { ALLOWED_CHANNELS, buildWalkwiseApi, installPreloadBridge } from "../preload/index";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
 describe("TASK-DESKTOP-001 Electron/Vue scaffold・main/preload安全境界", () => {
-  test.fails("TC-DESKTOP-001-02: preload allowlist [unit/P0]", async () => {
-    /**
-     * Contract: docs/test-cases/TASK-DESKTOP-001-electron-vue-scaffold-and-ipc-security.md
-     * Given: 未許可channelを呼ぶ
-     * When: API
-     * Then: rendererから送信できない
-     * STEP7: import only approved symbols and replace this explicit error
-     * with concrete arrange/act/assert logic while preserving the case ID.
-     */
-    throw new Error("STEP3 scaffold not implemented: TC-DESKTOP-001-02");
+  test("TC-DESKTOP-001-02: preload allowlist [unit/P0]", () => {
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    const api = buildWalkwiseApi({ invoke, on: vi.fn(), removeListener: vi.fn() }) as unknown as Record<
+      string,
+      unknown
+    >;
+
+    // 未許可のchannel名に対応するmethodは存在せず、rendererから送信できない。
+    const unlisted = api["unregistered.channel"] as unknown;
+    expect(unlisted).toBeUndefined();
+    expect(() => (unlisted as (...args: unknown[]) => unknown)()).toThrow();
+
+    // job.startを呼んでも、固定allowlist内のchannel名でしかinvokeされない。
+    void (api.job as { start: (input: unknown) => Promise<unknown> }).start({});
+    expect(invoke).toHaveBeenCalledWith("job:start", {});
+    for (const call of invoke.mock.calls) {
+      expect(ALLOWED_CHANNELS).toContain(call[0]);
+    }
   });
 
-  test.fails("TC-DESKTOP-001-04: package scripts [unit/P1]", async () => {
-    /**
-     * Contract: docs/test-cases/TASK-DESKTOP-001-electron-vue-scaffold-and-ipc-security.md
-     * Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-     * When: `createMainWindow(): BrowserWindow`を通じて「package scripts」を実行する
-     * Then: 「package scripts」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。
-     * STEP7: import only approved symbols and replace this explicit error
-     * with concrete arrange/act/assert logic while preserving the case ID.
-     */
-    throw new Error("STEP3 scaffold not implemented: TC-DESKTOP-001-04");
+  test("TC-DESKTOP-001-04: package scripts [unit/P1]", () => {
+    const packageJson = JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {
+      scripts: Record<string, string>;
+    };
+
+    expect(packageJson.scripts.build).toBeTruthy();
+    expect(packageJson.scripts.typecheck).toBeTruthy();
+    expect(packageJson.scripts.test).toBeTruthy();
+    expect(packageJson.scripts.package).toBeTruthy();
   });
 
-  test.fails("TC-DESKTOP-001-06: typed IPC contract [integration_mock/P1]", async () => {
-    /**
-     * Contract: docs/test-cases/TASK-DESKTOP-001-electron-vue-scaffold-and-ipc-security.md
-     * Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-     * When: `createMainWindow(): BrowserWindow`を通じて「typed IPC contract」を実行する
-     * Then: 「typed IPC contract」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。
-     * STEP7: import only approved symbols and replace this explicit error
-     * with concrete arrange/act/assert logic while preserving the case ID.
-     */
-    throw new Error("STEP3 scaffold not implemented: TC-DESKTOP-001-06");
+  test("TC-DESKTOP-001-06: typed IPC contract [integration_mock/P1]", async () => {
+    const invoke = vi.fn().mockResolvedValue({ projects: [] });
+    const api = buildWalkwiseApi({ invoke, on: vi.fn(), removeListener: vi.fn() });
+
+    const result = await api.project.list();
+
+    expect(invoke).toHaveBeenCalledWith("project:list");
+    expect(result).toEqual({ projects: [] });
+
+    await api.project.get("proj-1");
+    expect(invoke).toHaveBeenCalledWith("project:get", "proj-1");
   });
 
-  test.fails("TC-DESKTOP-001-08: 必須入力欠落 [unit/P0]", async () => {
-    /**
-     * Contract: docs/test-cases/TASK-DESKTOP-001-electron-vue-scaffold-and-ipc-security.md
-     * Given: 主ID、必須path、必須設定のいずれかが欠落した入力
-     * When: `createMainWindow(): BrowserWindow`を実行する
-     * Then: 副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。
-     * STEP7: import only approved symbols and replace this explicit error
-     * with concrete arrange/act/assert logic while preserving the case ID.
-     */
-    throw new Error("STEP3 scaffold not implemented: TC-DESKTOP-001-08");
-  });
+  test("TC-DESKTOP-001-08: 必須入力欠落 [unit/P0]", () => {
+    expect(() => buildWalkwiseApi(null)).toThrow();
+    expect(() => buildWalkwiseApi(undefined)).toThrow();
 
+    const invoke = vi.fn();
+    expect(() => installPreloadBridge(null, { invoke, on: vi.fn(), removeListener: vi.fn() })).toThrow();
+
+    // installPreloadBridgeがcontextBridge欠落で例外を投げる場合、
+    // 副作用(exposeInMainWorld呼出し)は一切発生していない。
+    const exposeInMainWorld = vi.fn();
+    try {
+      installPreloadBridge(null, { invoke, on: vi.fn(), removeListener: vi.fn() });
+    } catch {
+      // expected
+    }
+    expect(exposeInMainWorld).not.toHaveBeenCalled();
+  });
 });

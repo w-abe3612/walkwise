@@ -1,64 +1,194 @@
-from __future__ import annotations
+"""script/asr/verification.py — 公開契約:
+ASRVerifier.verify(audio, tts_segments, terminology) -> ASRVerificationReport,
+normalize_for_comparison(text, terminology) -> str.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/asr/verification.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-ASR-001
+Contract: docs/test-cases/TASK-ASR-001-asr-script-audio-verification.md
+Spec: docs/specifications/asr-script-audio-verification.md(5.1〜5.6節, 8節)
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-ASR-001', 'ASRVerifier.verify(audio, tts_segments, terminology) -> ASRVerificationReport', 'segment alignmentと章fallbackを行い差分候補を返す。'),
-    ('TASK-ASR-001', 'normalize_for_comparison(text, terminology) -> str', '用語辞書を用いて比較用にだけ正規化する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-ASR-001-01', 'priority': 'P0', 'layer': 'unit', 'title': 'ASR単独fail禁止', 'given': '大きな差分report', 'when': 'verify', 'then': 'review_required候補に留め最終failにしない', 'test_file': '`tests/test_asr_verification.py`'},
-    {'id': 'TC-ASR-001-02', 'priority': 'P0', 'layer': 'unit', 'title': 'segment fallback', 'given': 'segment alignment不能', 'when': 'verify', 'then': '章単位比較へfallbackし理由を記録', 'test_file': '`tests/test_asr_verification.py`'},
-    {'id': 'TC-ASR-001-03', 'priority': 'P0', 'layer': 'unit', 'title': '用語正規化', 'given': 'SQL/エスキューエル辞書', 'when': '比較', 'then': '辞書上同義として扱い原稿自体は変更しない', 'test_file': '`tests/test_asr_verification.py`'},
-    {'id': 'TC-ASR-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'local adapter', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ASRClient Protocol: check_connectivity()/transcribe()`を通じて「local adapter」を実行する', 'then': '「local adapter」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_asr_verification.py`'},
-    {'id': 'TC-ASR-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'cloud off', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ASRClient Protocol: check_connectivity()/transcribe()`を通じて「cloud off」を実行する', 'then': '通常・実接続テストともcloud endpointへ送信せず、network clientが呼ばれていないことを確認する。', 'test_file': '`tests/test_asr_verification.py`'},
-    {'id': 'TC-ASR-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'terminology normalization', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ASRClient Protocol: check_connectivity()/transcribe()`を通じて「terminology normalization」を実行する', 'then': '「terminology normalization」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_asr_verification.py`'},
-    {'id': 'TC-ASR-001-07', 'priority': 'P1', 'layer': 'unit', 'title': '差分report', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ASRClient Protocol: check_connectivity()/transcribe()`を通じて「差分report」を実行する', 'then': '「差分report」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_asr_verification.py`'},
-    {'id': 'TC-ASR-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`ASRClient Protocol: check_connectivity()/transcribe()`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_asr_verification.py`'},
-    {'id': 'TC-ASR-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`ASRClient Protocol: check_connectivity()/transcribe()`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_asr_verification.py`'},
-    {'id': 'TC-ASR-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_asr_verification.py`'},
-    {'id': 'TC-ASR-001-11', 'priority': 'P0', 'layer': 'integration_smoke', 'title': 'ローカルWhisper互換runtimeの疎通確認', 'given': '実接続テストが明示的に有効化され、必要な設定が存在する', 'when': 'runtime/modelの存在・読込可否・versionを確認し、まだ音声文字起こしは行わない。', 'then': 'ConnectivityResultを返す。失敗時は原因を秘密値なしで報告し、実機能テストを開始しない。', 'test_file': '`tests/test_asr_verification.py`'},
-    {'id': 'TC-ASR-001-12', 'priority': 'P1', 'layer': 'integration_live', 'title': 'ローカルWhisper互換runtimeの実機能テスト', 'given': '`asr_connectivity_gate`が成功済み', 'when': '疎通成功後、数秒の固定fixture WAVだけを文字起こしし、非空segmentとtimestamp順を確認する。', 'then': '最小の実機能結果を検証する。疎通fixtureなしでこのテストを単独実行できない。', 'test_file': '`tests/test_asr_verification.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/asr/verification.py)")
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any
+
+from script.asr.base import ASRClient
+from script.core.errors import AppError, ErrorCode
+
+# 15節: CER/WERの具体的閾値は未決定事項。仕様確定までの安全側の暫定値。
+_REVIEW_REQUIRED_CER_THRESHOLD = 0.15
+_REVIEW_REQUIRED_WER_THRESHOLD = 0.2
+_ALLOWED_STATUSES = ("pass", "warning", "review_required")
+
+
+def normalize_for_comparison(text: Any, terminology: Mapping[str, str]) -> str:
+    """用語辞書を用いて比較用にだけ正規化する(原稿自体は変更しない)。
+
+    Public contract: ``normalize_for_comparison(text, terminology) -> str``.
+    """
+    if text is None:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "text is required")
+    if terminology is None:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "terminology is required")
+
+    normalized = str(text)
+    # 長い変則表記から先に置換し、短い表記による部分一致誤変換を避ける。
+    for variant in sorted(terminology, key=len, reverse=True):
+        normalized = normalized.replace(variant, terminology[variant])
+    return normalized
+
+
+def _levenshtein(reference: Sequence[Any], hypothesis: Sequence[Any]) -> int:
+    previous_row = list(range(len(hypothesis) + 1))
+    for i, ref_item in enumerate(reference, start=1):
+        current_row = [i] + [0] * len(hypothesis)
+        for j, hyp_item in enumerate(hypothesis, start=1):
+            insert_cost = current_row[j - 1] + 1
+            delete_cost = previous_row[j] + 1
+            substitute_cost = previous_row[j - 1] + (0 if ref_item == hyp_item else 1)
+            current_row[j] = min(insert_cost, delete_cost, substitute_cost)
+        previous_row = current_row
+    return previous_row[-1]
+
+
+def _character_error_rate(reference: str, hypothesis: str) -> float:
+    if not reference:
+        return 0.0 if not hypothesis else 1.0
+    return _levenshtein(list(reference), list(hypothesis)) / len(reference)
+
+
+def _word_error_rate(reference: str, hypothesis: str) -> float:
+    reference_words = reference.split()
+    hypothesis_words = hypothesis.split()
+    if not reference_words:
+        return 0.0 if not hypothesis_words else 1.0
+    return _levenshtein(reference_words, hypothesis_words) / len(reference_words)
+
 
 class ASRVerificationReport:
-    """Typed data placeholder; fields are finalized during task implementation."""
+    """`ASRVerifier.verify()`の戻り値(8節report例に対応)。"""
+
     def __init__(self, **data: Any) -> None:
+        status = data.get("status")
+        if status not in _ALLOWED_STATUSES:
+            # 12節: auto_fail_policy.allowed=falseの間、ASR単独結果でstatus: failを設定できない。
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"invalid or disallowed status: {status!r}")
         self.data = dict(data)
+        self.data.setdefault("threshold_status", "provisional")
+        self.data.setdefault("issues", ())
+        self.data["issues"] = tuple(self.data["issues"])
+
     def __getattr__(self, name: str) -> Any:
         try:
             return self.data[name]
         except KeyError as exc:
             raise AttributeError(name) from exc
 
+
 class ASRVerifier:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def verify(self, audio: Any, tts_segments: Any, terminology: Any) -> ASRVerificationReport:
+    """segment alignmentと章fallbackを行い、review候補の差分reportを返す(5.2, 5.4, 5.5節)。"""
+
+    def __init__(self, asr_client: ASRClient) -> None:
+        if asr_client is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "asr_client is required")
+        self._asr_client = asr_client
+
+    def verify(
+        self,
+        audio: Any,
+        tts_segments: Sequence[Mapping[str, Any]],
+        terminology: Mapping[str, str],
+    ) -> ASRVerificationReport:
         """segment alignmentと章fallbackを行い差分候補を返す。
 
         Public contract: ``ASRVerifier.verify(audio, tts_segments, terminology) -> ASRVerificationReport``.
         """
-        _step4_unimplemented('ASRVerifier.verify')
+        if not audio:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "audio is required")
+        if not tts_segments:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "tts_segments is required")
+        if terminology is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "terminology is required")
 
-def normalize_for_comparison(text: Any, terminology: Any) -> str:
-    """用語辞書を用いて比較用にだけ正規化する。
+        transcript = self._asr_client.transcribe(Path(audio))
+        asr_segments = list(transcript.segments)
+        tts_segment_list = list(tts_segments)
 
-    Public contract: ``normalize_for_comparison(text, terminology) -> str``.
-    """
-    _step4_unimplemented('normalize_for_comparison')
+        issues: list[dict[str, Any]] = []
+        alignment_fallback = False
+        alignment_fallback_reason: str | None = None
+
+        if len(asr_segments) == len(tts_segment_list):
+            # 5.2節: 原則segment単位でアラインメントする。
+            pairs = [
+                (tts_segment.get("segment_id"), str(tts_segment["tts_text"]), asr_segment.text)
+                for tts_segment, asr_segment in zip(tts_segment_list, asr_segments)
+            ]
+        else:
+            # 5.2節: segment alignmentが不能な場合は章単位比較へfallbackし、理由を記録する。
+            alignment_fallback = True
+            alignment_fallback_reason = (
+                f"segment_count_mismatch: tts_segments={len(tts_segment_list)} asr_segments={len(asr_segments)}"
+            )
+            combined_tts_text = " ".join(str(segment["tts_text"]) for segment in tts_segment_list)
+            combined_asr_text = " ".join(segment.text for segment in asr_segments)
+            pairs = [(None, combined_tts_text, combined_asr_text)]
+
+        cer_values: list[float] = []
+        wer_values: list[float] = []
+        for segment_id, tts_text, asr_text in pairs:
+            reference = normalize_for_comparison(tts_text, terminology)
+            hypothesis = normalize_for_comparison(asr_text, terminology)
+            cer = _character_error_rate(reference, hypothesis)
+            wer = _word_error_rate(reference, hypothesis)
+            cer_values.append(cer)
+            wer_values.append(wer)
+            if cer > _REVIEW_REQUIRED_CER_THRESHOLD or wer > _REVIEW_REQUIRED_WER_THRESHOLD:
+                issues.append(
+                    {"code": "possible_mispronunciation_or_diff", "severity": "review_required", "segment_id": segment_id}
+                )
+
+        if alignment_fallback:
+            issues.append(
+                {
+                    "code": "segment_alignment_fallback",
+                    "severity": "review_required",
+                    "segment_id": None,
+                    "reason": alignment_fallback_reason,
+                }
+            )
+
+        duplicate_segment_ratio = 0.0
+        if not alignment_fallback:
+            segment_ids = [segment.get("segment_id") for segment in tts_segment_list]
+            if len(set(segment_ids)) != len(segment_ids):
+                duplicate_segment_ratio = 1.0 - (len(set(segment_ids)) / len(segment_ids))
+
+        average_cer = sum(cer_values) / len(cer_values) if cer_values else 0.0
+        average_wer = sum(wer_values) / len(wer_values) if wer_values else 0.0
+
+        # 5.5節: 大きな差分であっても"fail"にはせず、review_requiredに留める(自動fail禁止)。
+        if issues:
+            status = "review_required"
+        elif average_cer > 0.0 or average_wer > 0.0:
+            status = "warning"
+        else:
+            status = "pass"
+
+        return ASRVerificationReport(
+            schema_version="1.0",
+            asr_provider=transcript.provider,
+            asr_provider_version=transcript.provider_version,
+            status=status,
+            metrics={
+                "character_error_rate": round(average_cer, 4),
+                "word_error_rate": round(average_wer, 4),
+                "missing_segment_ratio": 0.0,
+                "duplicate_segment_ratio": duplicate_segment_ratio,
+                "order_mismatch_count": 0,
+            },
+            issues=tuple(issues),
+            alignment_fallback=alignment_fallback,
+            alignment_fallback_reason=alignment_fallback_reason,
+            threshold_status="provisional",
+        )

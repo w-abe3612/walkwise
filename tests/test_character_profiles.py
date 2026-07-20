@@ -1,114 +1,154 @@
-"""STEP3 test scaffold for TASK-PROFILE-001: Character・Voice profile読込と選択.
+"""STEP4 test implementation for TASK-PROFILE-001: CharacterProfileRepository / cross-cutting profile checks.
 
 Contract: docs/test-cases/TASK-PROFILE-001-character-and-voice-profiles.md
 Release scope: MVP
-Planned production files:
-- script/profiles/characters.py
-- script/profiles/voices.py
-- script/schemas/profiles.py
-
-This file is the test-generation source of truth for the cases below.
-STEP3 intentionally imports no production module because STEP4 source
-scaffolds do not exist yet. Claude Code must replace each explicit
-failure with assertions without changing case IDs or contract meaning."""
+"""
 
 from __future__ import annotations
 
 import pytest
 
+from script.core.errors import AppError, ErrorCode
+from script.profiles.characters import CharacterProfileRepository
+from script.profiles.voices import VoiceProfileRepository
+from script.schemas.profiles import (
+    CharacterProfile,
+    CharacterProfileStatus,
+    EngineIdentity,
+    VoiceProfile,
+    VoiceProfileStatus,
+    VoiceSpeaker,
+)
+
 pytestmark = pytest.mark.mvp
 
+
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-PROFILE-001-01 is not implemented")
 def test_tc_profile_001_01() -> None:
-    """TC-PROFILE-001-01 — ID分離
-    
-    Contract: docs/test-cases/TASK-PROFILE-001-character-and-voice-profiles.md
-    Priority: P0
-    Layer: unit
-    Given: 同名characterとengine speaker
-    When: load
-    Then: character_id/voice_profile_id/engine IDsを別保持
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-PROFILE-001-01")
+    """TC-PROFILE-001-01 — ID分離: 同名character/engine speakerでもIDを別保持する。"""
+    shared_name = "tsumugi"
+    character = CharacterProfile(
+        character_id=shared_name,
+        display_name="つむぎ(中立解説)",
+        status=CharacterProfileStatus.APPROVED,
+    )
+    voice = VoiceProfile(
+        voice_profile_id="kasukabe-tsumugi-voicevox-default",
+        engine="voicevox",
+        speaker=VoiceSpeaker(id=shared_name, style_id="3"),
+        character_id=shared_name,
+        engine_identity=EngineIdentity(speaker_uuid=shared_name, engine_version="0.14.0"),
+        status=VoiceProfileStatus.APPROVED,
+        audition_approved=True,
+    )
+
+    character_repo = CharacterProfileRepository((character,))
+    voice_repo = VoiceProfileRepository((voice,))
+
+    loaded_character = character_repo.load(shared_name)
+    loaded_voice = voice_repo.load("kasukabe-tsumugi-voicevox-default")
+
+    assert loaded_character.character_id == shared_name
+    assert loaded_voice.voice_profile_id == "kasukabe-tsumugi-voicevox-default"
+    assert loaded_voice.character_id == shared_name
+    # engineのspeaker.idと外部engine_identity.speaker_uuidは同じ文字列でも別の保持領域。
+    assert loaded_voice.speaker.id == shared_name
+    assert loaded_voice.engine_identity.speaker_uuid == shared_name
+    assert loaded_voice.voice_profile_id != loaded_character.character_id
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-PROFILE-001-03 is not implemented")
 def test_tc_profile_001_03() -> None:
-    """TC-PROFILE-001-03 — 未承認選択
-    
-    Contract: docs/test-cases/TASK-PROFILE-001-character-and-voice-profiles.md
-    Priority: P0
-    Layer: unit
-    Given: candidate/rejected profile
-    When: select
-    Then: 拒否する
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-PROFILE-001-03")
+    """TC-PROFILE-001-03 — 未承認選択: candidate/rejected profileのselectは拒否する。"""
+    candidate = CharacterProfile(
+        character_id="candidate-narrator",
+        display_name="候補ナレーター",
+        status=CharacterProfileStatus.CANDIDATE,
+    )
+    rejected = CharacterProfile(
+        character_id="rejected-narrator",
+        display_name="不採用ナレーター",
+        status=CharacterProfileStatus.REJECTED,
+    )
+    repo = CharacterProfileRepository((candidate, rejected))
+
+    with pytest.raises(AppError) as excinfo_candidate:
+        repo.select("candidate-narrator")
+    assert excinfo_candidate.value.code is ErrorCode.PERMISSION_DENIED
+
+    with pytest.raises(AppError) as excinfo_rejected:
+        repo.select("rejected-narrator")
+    assert excinfo_rejected.value.code is ErrorCode.PERMISSION_DENIED
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-PROFILE-001-05 is not implemented")
 def test_tc_profile_001_05() -> None:
-    """TC-PROFILE-001-05 — provisional/selected
-    
-    Contract: docs/test-cases/TASK-PROFILE-001-character-and-voice-profiles.md
-    Priority: P1
-    Layer: unit
-    Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-    When: `CharacterProfile/VoiceProfile/EngineIdentity`を通じて「provisional/selected」を実行する
-    Then: 「provisional/selected」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-PROFILE-001-05")
+    """TC-PROFILE-001-05 — provisional/selected: provisional voice profileはdeliverables選択を拒否される。"""
+    provisional = VoiceProfile(
+        voice_profile_id="ouka-miko-voicevox-default",
+        engine="voicevox",
+        speaker=VoiceSpeaker(id="ouka-miko", style_id="1"),
+        status=VoiceProfileStatus.PROVISIONAL,
+    )
+    approved = VoiceProfile(
+        voice_profile_id="ouka-miko-voicevox-approved",
+        engine="voicevox",
+        speaker=VoiceSpeaker(id="ouka-miko", style_id="1"),
+        engine_identity=EngineIdentity(engine_version="0.14.0"),
+        status=VoiceProfileStatus.APPROVED,
+        audition_approved=True,
+    )
+    repo = VoiceProfileRepository((provisional, approved))
+
+    with pytest.raises(AppError) as excinfo:
+        repo.select("ouka-miko-voicevox-default")
+    assert excinfo.value.code is ErrorCode.PERMISSION_DENIED
+
+    selected = repo.select("ouka-miko-voicevox-approved")
+    assert selected.status is VoiceProfileStatus.APPROVED
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-PROFILE-001-07 is not implemented")
 def test_tc_profile_001_07() -> None:
-    """TC-PROFILE-001-07 — 必須入力欠落
-    
-    Contract: docs/test-cases/TASK-PROFILE-001-character-and-voice-profiles.md
-    Priority: P0
-    Layer: unit
-    Given: 主ID、必須path、必須設定のいずれかが欠落した入力
-    When: `CharacterProfile/VoiceProfile/EngineIdentity`を実行する
-    Then: 副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-PROFILE-001-07")
+    """TC-PROFILE-001-07 — 必須入力欠落: 副作用前に安定したvalidation errorを返す。"""
+    with pytest.raises(AppError) as excinfo:
+        CharacterProfile(character_id="", display_name="x")
+    assert excinfo.value.code is ErrorCode.VALIDATION_ERROR
+
+    with pytest.raises(AppError):
+        CharacterProfile(character_id="c1", display_name="")
+
+    with pytest.raises(AppError):
+        CharacterProfileRepository(())
+
+    with pytest.raises(AppError):
+        CharacterProfileRepository(
+            (CharacterProfile(character_id="c1", display_name="x", status=CharacterProfileStatus.APPROVED),)
+        ).load("")
+
+    with pytest.raises(AppError):
+        VoiceProfile(voice_profile_id="", engine="voicevox", speaker=VoiceSpeaker(id="s1"))
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-PROFILE-001-09 is not implemented")
 def test_tc_profile_001_09() -> None:
-    """TC-PROFILE-001-09 — 入力・既存成果物の不変性
-    
-    Contract: docs/test-cases/TASK-PROFILE-001-character-and-voice-profiles.md
-    Priority: P0
-    Layer: unit
-    Given: hash取得済みの入力と既存正常成果物
-    When: 正常処理または意図的な失敗を発生させる
-    Then: 入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-PROFILE-001-09")
+    """TC-PROFILE-001-09 — 入力・既存成果物の不変性: 失敗を試みても既存正常成果物は変化しない。"""
+    approved = CharacterProfile(
+        character_id="neutral-explainer",
+        display_name="中立解説者",
+        status=CharacterProfileStatus.APPROVED,
+    )
+    rejected = CharacterProfile(
+        character_id="rejected-narrator",
+        display_name="不採用ナレーター",
+        status=CharacterProfileStatus.REJECTED,
+    )
+    repo = CharacterProfileRepository((approved, rejected))
+
+    before = repo.select("neutral-explainer")
+    with pytest.raises(AppError):
+        repo.select("rejected-narrator")
+
+    after = repo.load("neutral-explainer")
+    assert after == before
+    assert after.status is CharacterProfileStatus.APPROVED

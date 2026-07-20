@@ -1,46 +1,71 @@
-from __future__ import annotations
+"""script/source_processing/manifests.py — 公開契約: build_chunk_manifest(chunks) / build_topic_index(...).
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/source_processing/manifests.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-SOURCE-002
+Contract: docs/test-cases/TASK-SOURCE-002-source-normalization-chunking-and-index.md
+Spec: docs/specifications/source-storage-and-common-schema.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-SOURCE-002', 'build_chunk_manifest(chunks) / build_topic_index(...)', '参照可能なmanifest/indexを生成する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-SOURCE-002-01', 'priority': 'P0', 'layer': 'unit', 'title': '低リスク正規化', 'given': '改行・Unicode・反復headerがある', 'when': 'normalizeする', 'then': '決定的修正とbefore/after hash/diffを返す', 'test_file': '`tests/test_source_normalization.py`'},
-    {'id': 'TC-SOURCE-002-02', 'priority': 'P0', 'layer': 'unit', 'title': 'soft chunk', 'given': '2000文字付近の段落', 'when': 'chunkする', 'then': '意味境界を優先しlocatorを失わない', 'test_file': '`tests/test_source_chunking.py`'},
-    {'id': 'TC-SOURCE-002-03', 'priority': 'P0', 'layer': 'unit', 'title': '参照整合', 'given': 'chunk manifestとtopic index', 'when': 'validateする', 'then': '全chunk IDが存在し重複がない', 'test_file': '`tests/test_source_manifest.py`'},
-    {'id': 'TC-SOURCE-002-04', 'priority': 'P1', 'layer': 'unit', 'title': 'Unicode/改行/空白の決定的正規化', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`normalize_text(text, rules) -> NormalizationResult`を通じて「Unicode/改行/空白の決定的正規化」を実行する', 'then': '「Unicode/改行/空白の決定的正規化」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_source_normalization.py`'},
-    {'id': 'TC-SOURCE-002-05', 'priority': 'P1', 'layer': 'unit', 'title': '繰返しheader/footer除去', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`normalize_text(text, rules) -> NormalizationResult`を通じて「繰返しheader/footer除去」を実行する', 'then': '「繰返しheader/footer除去」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_source_chunking.py`'},
-    {'id': 'TC-SOURCE-002-06', 'priority': 'P1', 'layer': 'unit', 'title': 'footnote分離', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`normalize_text(text, rules) -> NormalizationResult`を通じて「footnote分離」を実行する', 'then': '「footnote分離」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_source_manifest.py`'},
-    {'id': 'TC-SOURCE-002-07', 'priority': 'P1', 'layer': 'unit', 'title': 'structured Markdown/YAML/JSON', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`normalize_text(text, rules) -> NormalizationResult`を通じて「structured Markdown/YAML/JSON」を実行する', 'then': '「structured Markdown/YAML/JSON」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_source_normalization.py`'},
-    {'id': 'TC-SOURCE-002-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`normalize_text(text, rules) -> NormalizationResult`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_source_chunking.py`'},
-    {'id': 'TC-SOURCE-002-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`normalize_text(text, rules) -> NormalizationResult`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_source_manifest.py`'},
-    {'id': 'TC-SOURCE-002-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_source_normalization.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/source_processing/manifests.py)")
+from collections.abc import Mapping, Sequence
+from typing import Any
 
-def build_chunk_manifest(chunks: Any) -> Any:
-    """参照可能なmanifest/indexを生成する。
+from script.core.errors import AppError, ErrorCode
+from script.source_processing.chunking import SourceChunk
 
-    Public contract: ``build_chunk_manifest(chunks) / build_topic_index(...)``.
-    """
-    _step4_unimplemented('build_chunk_manifest')
 
-def build_topic_index(*args: Any, **kwargs: Any) -> Any:
-    """参照可能なmanifest/indexを生成する。
+def build_chunk_manifest(chunks: Sequence[SourceChunk]) -> dict[str, Any]:
+    """参照可能なmanifest/indexを生成する(chunk_id/orderの重複を拒否する)。"""
+    if not chunks:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "chunks must not be empty")
 
-    Public contract: ``build_chunk_manifest(chunks) / build_topic_index(...)``.
-    """
-    _step4_unimplemented('build_topic_index')
+    seen_ids: set[str] = set()
+    seen_orders: set[int] = set()
+    for chunk in chunks:
+        if chunk.chunk_id in seen_ids:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"duplicate chunk_id: {chunk.chunk_id}")
+        if chunk.order in seen_orders:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"duplicate order: {chunk.order}")
+        seen_ids.add(chunk.chunk_id)
+        seen_orders.add(chunk.order)
+
+    ordered = sorted(chunks, key=lambda chunk: chunk.order)
+    return {
+        "schema_version": "1.0",
+        "chunks": [
+            {
+                "chunk_id": chunk.chunk_id,
+                "order": chunk.order,
+                "locator": {
+                    "chapter": chunk.locator.chapter,
+                    "section": chunk.locator.section,
+                    "page": chunk.locator.page,
+                },
+                "input_hash": chunk.input_hash,
+            }
+            for chunk in ordered
+        ],
+    }
+
+
+def build_topic_index(topics: Mapping[str, Sequence[str]], *, chunk_manifest: Mapping[str, Any]) -> dict[str, Any]:
+    """参照可能なmanifest/indexを生成する(存在しないchunk_idへの参照を拒否する)。"""
+    if not topics:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "topics must not be empty")
+    if chunk_manifest is None:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "chunk_manifest is required")
+
+    known_chunk_ids = {chunk["chunk_id"] for chunk in chunk_manifest.get("chunks", [])}
+
+    entries = []
+    for topic_id, chunk_refs in topics.items():
+        if not chunk_refs:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"topic {topic_id!r} must reference at least one chunk_id")
+        for chunk_ref in chunk_refs:
+            if chunk_ref not in known_chunk_ids:
+                raise AppError(
+                    ErrorCode.VALIDATION_ERROR,
+                    f"topic {topic_id!r} references unknown chunk_id: {chunk_ref!r}",
+                )
+        entries.append({"topic_id": topic_id, "chunk_refs": list(chunk_refs)})
+
+    return {"schema_version": "1.0", "topics": entries}

@@ -1,114 +1,100 @@
-"""STEP3 test scaffold for TASK-CURRICULUM-001: topic map・curriculum・章仕様生成.
+"""STEP4 test implementation for TASK-CURRICULUM-001: ChapterSpec schema.
 
 Contract: docs/test-cases/TASK-CURRICULUM-001-curriculum-and-chapter-spec-generation.md
 Release scope: MVP
-Planned production files:
-- script/pipelines/curriculum.py
-- script/schemas/curriculum.py
-- script/schemas/chapter_spec.py
-
-This file is the test-generation source of truth for the cases below.
-STEP3 intentionally imports no production module because STEP4 source
-scaffolds do not exist yet. Claude Code must replace each explicit
-failure with assertions without changing case IDs or contract meaning."""
+"""
 
 from __future__ import annotations
 
 import pytest
 
+from script.core.errors import AppError, ErrorCode
+from script.schemas.chapter_spec import ChapterSpec, RequiredTopicRef
+
 pytestmark = pytest.mark.mvp
 
+
+def _make_spec(**overrides: object) -> ChapterSpec:
+    fields: dict[str, object] = dict(
+        project_id="proj-1",
+        chapter_id="chapter-0001",
+        order=1,
+        title="Loops",
+        purpose="Cover loops",
+        learning_outcomes=("Explain loops",),
+        required_topics=(RequiredTopicRef(topic_id="loops"),),
+        explanation_order=("loops",),
+        source_ids=("src-1",),
+        known_topic_ids=frozenset({"loops", "functions"}),
+        known_source_ids=frozenset({"src-1", "src-2"}),
+    )
+    fields.update(overrides)
+    return ChapterSpec(**fields)  # type: ignore[arg-type]
+
+
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-CURRICULUM-001-02 is not implemented")
 def test_tc_curriculum_001_02() -> None:
-    """TC-CURRICULUM-001-02 — 未知topic
-    
-    Contract: docs/test-cases/TASK-CURRICULUM-001-curriculum-and-chapter-spec-generation.md
-    Priority: P0
-    Layer: unit
-    Given: chapter specが未定義topicを参照
-    When: validate
-    Then: errorにする
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-CURRICULUM-001-02")
+    """TC-CURRICULUM-001-02 — 未知topic: chapter specが未定義topicを参照するとvalidateがerrorにする。"""
+    spec = _make_spec(
+        required_topics=(RequiredTopicRef(topic_id="unknown_topic"),),
+        explanation_order=("unknown_topic",),
+        known_topic_ids=frozenset({"loops", "functions"}),
+    )
+
+    with pytest.raises(AppError) as excinfo:
+        spec.validate()
+    assert excinfo.value.code is ErrorCode.VALIDATION_ERROR
+    assert "unknown_topic" in excinfo.value.message
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-CURRICULUM-001-04 is not implemented")
 def test_tc_curriculum_001_04() -> None:
-    """TC-CURRICULUM-001-04 — learning outcomes
-    
-    Contract: docs/test-cases/TASK-CURRICULUM-001-curriculum-and-chapter-spec-generation.md
-    Priority: P1
-    Layer: unit
-    Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-    When: `TopicMap/Curriculum`を通じて「learning outcomes」を実行する
-    Then: 「learning outcomes」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-CURRICULUM-001-04")
+    """TC-CURRICULUM-001-04 — learning outcomes: 空はWarningとして扱い、validateは例外にしない。"""
+    empty_spec = _make_spec(learning_outcomes=())
+    warnings = empty_spec.validate()
+    assert any("learning_outcomes" in warning for warning in warnings)
+
+    filled_spec = _make_spec(learning_outcomes=("Explain loops",))
+    assert filled_spec.validate() == ()
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-CURRICULUM-001-06 is not implemented")
 def test_tc_curriculum_001_06() -> None:
-    """TC-CURRICULUM-001-06 — source_ids
-    
-    Contract: docs/test-cases/TASK-CURRICULUM-001-curriculum-and-chapter-spec-generation.md
-    Priority: P1
-    Layer: unit
-    Given: 承認済み仕様に適合する最小入力と、必要な依存をmockした状態
-    When: `TopicMap/Curriculum`を通じて「source_ids」を実行する
-    Then: 「source_ids」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-CURRICULUM-001-06")
+    """TC-CURRICULUM-001-06 — source_ids: 未知source_id参照はerrorにし、既知なら通す。"""
+    bad_spec = _make_spec(source_ids=("unknown_source",))
+    with pytest.raises(AppError) as excinfo:
+        bad_spec.validate()
+    assert "unknown_source" in excinfo.value.message
+
+    good_spec = _make_spec(source_ids=("src-1", "src-2"))
+    assert good_spec.validate() == ()
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-CURRICULUM-001-08 is not implemented")
 def test_tc_curriculum_001_08() -> None:
-    """TC-CURRICULUM-001-08 — 必須入力欠落
-    
-    Contract: docs/test-cases/TASK-CURRICULUM-001-curriculum-and-chapter-spec-generation.md
-    Priority: P0
-    Layer: unit
-    Given: 主ID、必須path、必須設定のいずれかが欠落した入力
-    When: `TopicMap/Curriculum`を実行する
-    Then: 副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-CURRICULUM-001-08")
+    """TC-CURRICULUM-001-08 — 必須入力欠落: 主ID欠落は副作用前に安定したvalidation errorを返す。"""
+    with pytest.raises(AppError) as excinfo:
+        _make_spec(chapter_id="")
+    assert excinfo.value.code is ErrorCode.VALIDATION_ERROR
+
+    with pytest.raises(AppError):
+        _make_spec(required_topics=())
+
+    with pytest.raises(AppError):
+        _make_spec(project_id="")
+
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="STEP3 scaffold: TC-CURRICULUM-001-10 is not implemented")
 def test_tc_curriculum_001_10() -> None:
-    """TC-CURRICULUM-001-10 — 入力・既存成果物の不変性
-    
-    Contract: docs/test-cases/TASK-CURRICULUM-001-curriculum-and-chapter-spec-generation.md
-    Priority: P0
-    Layer: unit
-    Given: hash取得済みの入力と既存正常成果物
-    When: 正常処理または意図的な失敗を発生させる
-    Then: 入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。
-    
-    Implementation handoff:
-    - Import only the approved symbols listed in the contract.
-    - Replace pytest.fail with concrete arrange/act/assert logic.
-    - Preserve this case ID, layer, Given/When/Then, and strict xfail
-    until the intended Red state has been demonstrated."""
-    pytest.fail("STEP3 scaffold not implemented: TC-CURRICULUM-001-10")
+    """TC-CURRICULUM-001-10 — 入力・既存成果物の不変性: validateの成功/失敗でspecの値が変化しない。"""
+    spec = _make_spec()
+    before = (spec.chapter_id, spec.required_topics, spec.source_ids, spec.learning_outcomes)
+
+    spec.validate()
+    assert (spec.chapter_id, spec.required_topics, spec.source_ids, spec.learning_outcomes) == before
+
+    bad_spec = _make_spec(source_ids=("unknown_source",))
+    before_bad = (bad_spec.chapter_id, bad_spec.required_topics, bad_spec.source_ids, bad_spec.learning_outcomes)
+    with pytest.raises(AppError):
+        bad_spec.validate()
+    assert (bad_spec.chapter_id, bad_spec.required_topics, bad_spec.source_ids, bad_spec.learning_outcomes) == before_bad

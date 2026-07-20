@@ -1,56 +1,136 @@
-from __future__ import annotations
+"""script/source_processing/ocr/pipeline.py — 公開契約: OcrPipeline.process_pages(pages, context) -> OcrManifest.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/source_processing/ocr/pipeline.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-OCR-001
+Contract: docs/test-cases/TASK-OCR-001-ocr-and-scanned-pdf-processing.md
+Spec: docs/specifications/ocr-and-scanned-pdf.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-OCR-001', 'OcrPipeline.process_pages(pages, context) -> OcrManifest', 'ページ単位結果・confidence・review flagを集約し失敗を分離する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-OCR-001-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'runtimeなし', 'given': 'Tesseractが見つからない', 'when': 'OCRを開始', 'then': '疎通確認で停止しSourceをfailed/reviewableにする', 'test_file': '`tests/test_ocr_client.py`'},
-    {'id': 'TC-OCR-001-02', 'priority': 'P0', 'layer': 'unit', 'title': '高リスク要素', 'given': 'table/code/math/figure候補page', 'when': 'pipeline処理', 'then': 'review_required flagを付け自動確定しない', 'test_file': '`tests/test_ocr_pipeline.py`'},
-    {'id': 'TC-OCR-001-03', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'ページ失敗分離', 'given': '複数page中1件だけsubprocess失敗', 'when': '処理', 'then': '他page結果を保持しmanifestに失敗を記録', 'test_file': '`tests/test_ocr_client.py`'},
-    {'id': 'TC-OCR-001-04', 'priority': 'P1', 'layer': 'integration_mock', 'title': 'Tesseract subprocess/adapter境界', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`OcrClient.check_runtime() -> RuntimeHealth`を通じて「Tesseract subprocess/adapter境界」を実行する', 'then': '「Tesseract subprocess/adapter境界」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_ocr_pipeline.py`'},
-    {'id': 'TC-OCR-001-05', 'priority': 'P1', 'layer': 'unit', 'title': '言語設定', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`OcrClient.check_runtime() -> RuntimeHealth`を通じて「言語設定」を実行する', 'then': '「言語設定」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_ocr_client.py`'},
-    {'id': 'TC-OCR-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'confidence', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`OcrClient.check_runtime() -> RuntimeHealth`を通じて「confidence」を実行する', 'then': '「confidence」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_ocr_pipeline.py`'},
-    {'id': 'TC-OCR-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'table/code/math/figure flag', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`OcrClient.check_runtime() -> RuntimeHealth`を通じて「table/code/math/figure flag」を実行する', 'then': '「table/code/math/figure flag」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_ocr_client.py`'},
-    {'id': 'TC-OCR-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`OcrClient.check_runtime() -> RuntimeHealth`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_ocr_pipeline.py`'},
-    {'id': 'TC-OCR-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`OcrClient.check_runtime() -> RuntimeHealth`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_ocr_client.py`'},
-    {'id': 'TC-OCR-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_ocr_pipeline.py`'},
-    {'id': 'TC-OCR-001-11', 'priority': 'P0', 'layer': 'integration_smoke', 'title': 'Tesseract runtimeの疎通確認', 'given': '実接続テストが明示的に有効化され、必要な設定が存在する', 'when': '`tesseract --version`と必要言語一覧を確認し、画像処理を行わない。', 'then': 'ConnectivityResultを返す。失敗時は原因を秘密値なしで報告し、実機能テストを開始しない。', 'test_file': '`tests/test_ocr_client.py`'},
-    {'id': 'TC-OCR-001-12', 'priority': 'P1', 'layer': 'integration_live', 'title': 'Tesseract runtimeの実機能テスト', 'given': '`tesseract_connectivity_gate`が成功済み', 'when': '疎通成功後、1行だけの固定fixture画像をOCRし、期待語を含むpage resultを確認する。', 'then': '最小の実機能結果を検証する。疎通fixtureなしでこのテストを単独実行できない。', 'test_file': '`tests/test_ocr_pipeline.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/source_processing/ocr/pipeline.py)")
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
+from script.core.errors import AppError, ErrorCode
+from script.source_processing.ocr.client import OcrClient, OcrOptions, OcrPageResult
+
+# ocr-and-scanned-pdf.md 10節「confidence全体が閾値未満 -> review_required」の
+# provisional閾値。信頼度閾値の実測調整は14節の未決定事項。
+_LOW_CONFIDENCE_THRESHOLD = 0.6
+
+# ocr-and-scanned-pdf.md 5.4節: 高リスク領域は自動確定せず常にreview_requiredとする。
+_HIGH_RISK_HINTS = frozenset({"formula", "code", "table", "diagram", "figure"})
+
+
+@dataclass(frozen=True)
+class OcrPageRequest:
+    """OcrPipelineへの1ページ分の入力。"""
+
+    image_path: str
+    options: OcrOptions
+    high_risk_hint: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.image_path:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "image_path is required")
+        if self.options is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "options is required")
+        if self.high_risk_hint is not None and self.high_risk_hint not in _HIGH_RISK_HINTS:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"unknown high_risk_hint: {self.high_risk_hint!r}")
+
+
+@dataclass(frozen=True)
+class OcrPageOutcome:
+    """1ページ分の処理結果(成功/失敗どちらも保持する)。"""
+
+    image_path: str
+    status: str
+    result: OcrPageResult | None = None
+    error: dict[str, str] | None = None
+    review_required: bool = False
+    review_reasons: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class OcrManifest:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """ページ単位結果・review flagを集約したmanifest。"""
+
+    runtime_available: bool
+    pages: tuple[OcrPageOutcome, ...]
+
 
 class OcrPipeline:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def process_pages(self, pages: Any, context: Any) -> OcrManifest:
-        """ページ単位結果・confidence・review flagを集約し失敗を分離する。
+    """ページ単位結果・confidence・review flagを集約し失敗を分離する。"""
 
-        Public contract: ``OcrPipeline.process_pages(pages, context) -> OcrManifest``.
-        """
-        _step4_unimplemented('OcrPipeline.process_pages')
+    def __init__(self, client: OcrClient) -> None:
+        if client is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "client is required")
+        self._client = client
+
+    def process_pages(
+        self,
+        pages: Sequence[OcrPageRequest],
+        context: Mapping[str, Any] | None = None,
+    ) -> OcrManifest:
+        """ページ単位結果・confidence・review flagを集約し失敗を分離する。"""
+        if not pages:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "pages must not be empty")
+
+        health = self._client.check_runtime()
+        if not health.available:
+            # ocr-and-scanned-pdf.md: runtime不在時は疎通確認で停止し、
+            # 各pageをfailed/reviewableとして記録する(subprocessを個別に試行しない)。
+            outcomes = tuple(
+                OcrPageOutcome(
+                    image_path=page.image_path,
+                    status="failed",
+                    result=None,
+                    error={
+                        "code": ErrorCode.EXTERNAL_UNAVAILABLE.value,
+                        "message": health.error or "tesseract runtime unavailable",
+                    },
+                    review_required=True,
+                    review_reasons=("tesseract_runtime_unavailable",),
+                )
+                for page in pages
+            )
+            return OcrManifest(runtime_available=False, pages=outcomes)
+
+        outcomes: list[OcrPageOutcome] = []
+        for page in pages:
+            try:
+                result = self._client.recognize(Path(page.image_path), page.options)
+            except AppError as exc:
+                outcomes.append(
+                    OcrPageOutcome(
+                        image_path=page.image_path,
+                        status="failed",
+                        result=None,
+                        error=exc.to_public_dict(),
+                        review_required=True,
+                        review_reasons=("ocr_failed",),
+                    )
+                )
+                continue
+
+            review_reasons: list[str] = []
+            if page.high_risk_hint:
+                # 5.4節: 高リスク領域は自動確定せず常にhuman reviewへ送る。
+                review_reasons.append(f"high_risk_{page.high_risk_hint}")
+            if result.confidence < _LOW_CONFIDENCE_THRESHOLD:
+                review_reasons.append("low_confidence")
+            if not result.text.strip():
+                review_reasons.append("empty_ocr_result")
+
+            outcomes.append(
+                OcrPageOutcome(
+                    image_path=page.image_path,
+                    status="success",
+                    result=result,
+                    error=None,
+                    review_required=bool(review_reasons),
+                    review_reasons=tuple(review_reasons),
+                )
+            )
+
+        return OcrManifest(runtime_available=True, pages=tuple(outcomes))

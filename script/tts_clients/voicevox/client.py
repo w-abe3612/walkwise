@@ -328,71 +328,170 @@ if __name__ == "__main__":
 
 
 # ---------------------------------------------------------------------------
-# STEP4 typed contract additions. Existing working implementation above is
-# preserved. New public APIs remain intentionally unimplemented.
+# STEP4 typed contract additions (TASK-VOICEVOX-001). Existing working
+# implementation above is preserved and reused (check_voicevox_running,
+# create_audio_query, apply_voice_settings, synthesize_wave,
+# merge_wav_bytes, split_text_for_voicevox). VoicevoxHttpClient adapts that
+# existing behavior to the common TTSClient contract in
+# script/tts_clients/base.py.
 # ---------------------------------------------------------------------------
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Protocol
+from dataclasses import dataclass
+from typing import Callable
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-VOICEVOX-001', 'VoicevoxHttpClient.check_connectivity() -> ConnectivityResult', 'GET /speakersのHTTP・JSON schemaを確認する。'),
-    ('TASK-VOICEVOX-001', 'list_speakers() -> list[SpeakerInfo]', 'UUID、表示名、style IDを動的取得する。'),
-    ('TASK-VOICEVOX-001', 'create_audio_query()/synthesize_wave()', '短文queryとWAV合成を行い非音声応答を拒否する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-VOICEVOX-001-01', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'speaker変換', 'given': 'mock /speakers response', 'when': 'list_speakers', 'then': 'UUID/name/style IDを保持し表示名分岐しない', 'test_file': '`tests/test_voicevox_client.py`'},
-    {'id': 'TC-VOICEVOX-001-02', 'priority': 'P0', 'layer': 'integration_mock', 'title': '合成mock', 'given': 'mock query/synthesis', 'when': 'adapter synthesize', 'then': 'parameter mappingとRIFF validationを行う', 'test_file': '`tests/test_voicevox_adapter.py`'},
-    {'id': 'TC-VOICEVOX-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'format不一致', 'given': '異なるsample rateの2WAV', 'when': 'merge', 'then': 'audio_format_mismatch', 'test_file': '`tests/test_voicevox_client.py`'},
-    {'id': 'TC-VOICEVOX-001-04', 'priority': 'P1', 'layer': 'unit', 'title': '/speakers health/list', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`VoicevoxHttpClient.check_connectivity() -> ConnectivityResult`を通じて「/speakers health/list」を実行する', 'then': '表示名へ依存せずengineの識別子から解決し、不在時はspeaker_not_foundまたは局所disableになる。', 'test_file': '`tests/test_voicevox_adapter.py`'},
-    {'id': 'TC-VOICEVOX-001-05', 'priority': 'P1', 'layer': 'unit', 'title': '/audio_query', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`VoicevoxHttpClient.check_connectivity() -> ConnectivityResult`を通じて「/audio_query」を実行する', 'then': '有効なmedia header・形式・順序を確認し、破損または形式不一致を成功扱いにしない。', 'test_file': '`tests/test_voicevox_client.py`'},
-    {'id': 'TC-VOICEVOX-001-06', 'priority': 'P1', 'layer': 'unit', 'title': '/synthesis', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`VoicevoxHttpClient.check_connectivity() -> ConnectivityResult`を通じて「/synthesis」を実行する', 'then': '「/synthesis」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_voicevox_adapter.py`'},
-    {'id': 'TC-VOICEVOX-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'timeout/error変換', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`VoicevoxHttpClient.check_connectivity() -> ConnectivityResult`を通じて「timeout/error変換」を実行する', 'then': 'timeoutを安定した共通errorへ変換し、半端な最終ファイルや成功状態を残さない。', 'test_file': '`tests/test_voicevox_client.py`'},
-    {'id': 'TC-VOICEVOX-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`VoicevoxHttpClient.check_connectivity() -> ConnectivityResult`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_voicevox_adapter.py`'},
-    {'id': 'TC-VOICEVOX-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`VoicevoxHttpClient.check_connectivity() -> ConnectivityResult`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_voicevox_client.py`'},
-    {'id': 'TC-VOICEVOX-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_voicevox_adapter.py`'},
-    {'id': 'TC-VOICEVOX-001-11', 'priority': 'P0', 'layer': 'integration_smoke', 'title': 'VOICEVOX Engine APIの疎通確認', 'given': '実接続テストが明示的に有効化され、必要な設定が存在する', 'when': '`GET /speakers`を1回実行し、HTTP成功、1件以上のspeaker、UUID・style IDを含むJSON配列を確認する。', 'then': 'ConnectivityResultを返す。失敗時は原因を秘密値なしで報告し、実機能テストを開始しない。', 'test_file': '`tests/test_voicevox_client.py`'},
-    {'id': 'TC-VOICEVOX-001-12', 'priority': 'P1', 'layer': 'integration_live', 'title': 'VOICEVOX Engine APIの実機能テスト', 'given': '`voicevox_connectivity_gate`が成功済み', 'when': '疎通成功後、短い固定文で`/audio_query`→`/synthesis`を1回実行し、RIFF/WAVEとして読める音声を確認する。', 'then': '最小の実機能結果を検証する。疎通fixtureなしでこのテストを単独実行できない。', 'test_file': '`tests/test_voicevox_adapter.py`'},
-)
+from script.tts_clients.base import TTSClientError, TTSErrorCode
+from script.tts_clients.models import SpeakerInfo
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/tts_clients/voicevox/client.py)")
+DEFAULT_CONNECTIVITY_TIMEOUT_SEC = 10
 
+
+@dataclass(frozen=True)
 class ConnectivityResult:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """副作用のない疎通確認結果。"""
 
-class SpeakerInfo:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    available: bool
+    detail: str = ""
+    speaker_count: int | None = None
+
 
 class VoicevoxHttpClient:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
+    """VOICEVOX Engine APIをTTS共通契約(TTSClient)へ適合させるHTTP client。"""
+
+    engine_name = "voicevox"
+
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        session_get: Callable[..., Any] | None = None,
+        session_post: Callable[..., Any] | None = None,
+        timeout: tuple[int, int] = DEFAULT_TIMEOUT,
+    ) -> None:
+        self._base_url = _normalize_base_url(base_url)
+        self._get = session_get or requests.get
+        self._post = session_post or requests.post
+        self._timeout = timeout
+
     def check_connectivity(self) -> ConnectivityResult:
-        """GET /speakersのHTTP・JSON schemaを確認する。
+        """GET /speakersのHTTP・JSON schemaを確認する。副作用のない疎通確認結果を返す。"""
+        try:
+            response = self._get(f"{self._base_url}/speakers", timeout=DEFAULT_CONNECTIVITY_TIMEOUT_SEC)
+        except requests.Timeout as exc:
+            return ConnectivityResult(available=False, detail=f"timeout: {exc}")
+        except requests.RequestException as exc:
+            return ConnectivityResult(available=False, detail=str(exc))
 
-        Public contract: ``VoicevoxHttpClient.check_connectivity() -> ConnectivityResult``.
-        """
-        _step4_unimplemented('VoicevoxHttpClient.check_connectivity')
+        if response.status_code >= 400:
+            return ConnectivityResult(available=False, detail=f"HTTP {response.status_code}")
 
-def list_speakers() -> list[SpeakerInfo]:
-    """UUID、表示名、style IDを動的取得する。
+        try:
+            data = response.json()
+        except ValueError as exc:
+            return ConnectivityResult(available=False, detail=f"invalid JSON: {exc}")
 
-    Public contract: ``list_speakers() -> list[SpeakerInfo]``.
-    """
-    _step4_unimplemented('list_speakers')
+        if not isinstance(data, list) or not data:
+            return ConnectivityResult(available=False, detail="`/speakers` did not return a non-empty JSON array")
+
+        for entry in data:
+            if not isinstance(entry, dict) or "speaker_uuid" not in entry or "styles" not in entry:
+                # 局所disable: 壊れたspeaker一覧を疎通失敗として扱い、例外にしない。
+                return ConnectivityResult(available=False, detail="`/speakers` entry missing required identifiers")
+
+        return ConnectivityResult(available=True, speaker_count=len(data))
+
+    def list_speakers(self) -> list[SpeakerInfo]:
+        """`/speakers`応答をUUID/表示名/style ID付きの共通SpeakerInfoへ変換する。"""
+        try:
+            response = self._get(f"{self._base_url}/speakers", timeout=self._timeout)
+        except requests.Timeout as exc:
+            raise TTSClientError(TTSErrorCode.TIMEOUT, engine_detail=str(exc)) from exc
+        except requests.RequestException as exc:
+            raise TTSClientError(TTSErrorCode.CONNECTION_ERROR, engine_detail=str(exc)) from exc
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise TTSClientError(TTSErrorCode.INVALID_AUDIO_RESPONSE, engine_detail=f"invalid JSON: {exc}") from exc
+
+        if not isinstance(data, list):
+            raise TTSClientError(TTSErrorCode.INVALID_AUDIO_RESPONSE, engine_detail="`/speakers` did not return a JSON array")
+
+        speakers: list[SpeakerInfo] = []
+        for entry in data:
+            speaker_uuid = entry.get("speaker_uuid")
+            speaker_name = entry.get("name", "")
+            for style in entry.get("styles", []):
+                style_id = style.get("id")
+                if speaker_uuid is None or style_id is None:
+                    continue
+                style_name = style.get("name", "")
+                speakers.append(
+                    SpeakerInfo(
+                        speaker_id=str(style_id),
+                        display_name=f"{speaker_name} ({style_name})".strip(),
+                        engine=self.engine_name,
+                        style_ids=(str(style_id),),
+                    )
+                )
+        return speakers
+
+    def create_audio_query(self, *, text: str, speaker_id: int) -> dict[str, Any]:
+        """短文からaudio_queryを取得する。空文字・非音声応答は共通errorへ変換する。"""
+        if not text.strip():
+            raise TTSClientError(TTSErrorCode.TEXT_EMPTY)
+
+        try:
+            response = self._post(
+                f"{self._base_url}/audio_query",
+                params={"text": text.strip(), "speaker": int(speaker_id)},
+                timeout=self._timeout,
+            )
+        except requests.Timeout as exc:
+            raise TTSClientError(TTSErrorCode.TIMEOUT, engine_detail=str(exc)) from exc
+        except requests.RequestException as exc:
+            raise TTSClientError(TTSErrorCode.QUERY_FAILED, engine_detail=str(exc)) from exc
+
+        if response.status_code >= 400:
+            if response.status_code == 404:
+                raise TTSClientError(TTSErrorCode.SPEAKER_NOT_FOUND, engine_detail=f"speaker={speaker_id}")
+            raise TTSClientError(TTSErrorCode.QUERY_FAILED, engine_detail=f"HTTP {response.status_code}")
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise TTSClientError(TTSErrorCode.QUERY_FAILED, engine_detail=f"invalid JSON: {exc}") from exc
+
+        if not isinstance(data, dict):
+            raise TTSClientError(TTSErrorCode.QUERY_FAILED, engine_detail="`/audio_query` did not return an object")
+        return data
+
+    def synthesize_wave(self, *, audio_query: dict[str, Any], speaker_id: int) -> bytes:
+        """audio_queryからWAVを合成する。非音声応答は成功扱いにしない。"""
+        try:
+            response = self._post(
+                f"{self._base_url}/synthesis",
+                params={"speaker": int(speaker_id)},
+                headers={"Content-Type": "application/json"},
+                json=audio_query,
+                timeout=self._timeout,
+            )
+        except requests.Timeout as exc:
+            raise TTSClientError(TTSErrorCode.TIMEOUT, engine_detail=str(exc)) from exc
+        except requests.RequestException as exc:
+            raise TTSClientError(TTSErrorCode.SYNTHESIS_FAILED, engine_detail=str(exc)) from exc
+
+        if response.status_code >= 400:
+            raise TTSClientError(TTSErrorCode.SYNTHESIS_FAILED, engine_detail=f"HTTP {response.status_code}")
+
+        content_type = response.headers.get("Content-Type", "")
+        if "audio" not in content_type and not response.content.startswith(b"RIFF"):
+            raise TTSClientError(
+                TTSErrorCode.INVALID_AUDIO_RESPONSE, engine_detail=f"Content-Type={content_type}"
+            )
+        return response.content
+
+    def merge_waves(self, wav_chunks: list[bytes]) -> bytes:
+        """part単位WAVを順序どおり結合する。形式不一致は共通errorへ変換する。"""
+        try:
+            return merge_wav_bytes(wav_chunks)
+        except VoicevoxClientError as exc:
+            raise TTSClientError(TTSErrorCode.AUDIO_FORMAT_MISMATCH, engine_detail=str(exc)) from exc

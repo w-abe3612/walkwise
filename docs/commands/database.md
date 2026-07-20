@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
+version: '1.1'
 last_updated: '2026-07-19'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-19'
 related_tasks:
 - TASK-DB-001
 - TASK-DB-002
@@ -46,13 +47,17 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `electron/tests/bootstrap.test.ts` — 存在
-- `electron/tests/worker_manager.test.ts` — 存在
-- `tests/test_database_connection.py` — 現在のダンプでは欠落
-- `tests/test_initial_schema.py` — 現在のダンプでは欠落
-- `tests/test_migration_runner.py` — 現在のダンプでは欠落
-- `tests/test_repositories.py` — 現在のダンプでは欠落
-- `tests/test_unit_of_work.py` — 現在のダンプでは欠落
+- `electron/tests/bootstrap.test.ts`
+- `electron/tests/worker_manager.test.ts`
+- `tests/test_database_connection.py`
+- `tests/test_initial_schema.py`
+- `tests/test_migration_runner.py`
+- `tests/test_repositories.py`
+- `tests/test_unit_of_work.py`
+
+現在の存在有無・実装状態は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。
+`TASK-DB-001`(database_connection/migration_runner/initial_schema、10 case)、
+`TASK-DB-002`(repositories/unit_of_work、8 case)はいずれも本実装済みでpassする。
 
 ## 5. 収集・型確認
 

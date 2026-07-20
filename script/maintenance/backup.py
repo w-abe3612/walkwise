@@ -1,55 +1,183 @@
-from __future__ import annotations
+"""script/maintenance/backup.py — 公開契約: create_backup/restore_backup/verify_backup.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/maintenance/backup.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-RELEASE-001
+Contract: docs/test-cases/TASK-RELEASE-001-windows-packaging-security-licenses-and-backup.md
+Spec: docs/specifications/17-local-data-persistence-policy.md(5.4節)
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-RELEASE-001', 'create_backup/restore_backup/verify_backup', '利用者dataのbackup/restoreをhash検証付きで行う。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-RELEASE-001-01', 'priority': 'P0', 'layer': 'e2e', 'title': 'uninstall data保持', 'given': '利用者Projectがあるpackage', 'when': 'uninstall scenario', 'then': '利用者dataを自動削除しない', 'test_file': '`electron/tests/packaging_contract.test.ts`'},
-    {'id': 'TC-RELEASE-001-02', 'priority': 'P0', 'layer': 'integration_mock', 'title': 'backup restore', 'given': 'DB+filesをbackupし一部破損', 'when': 'restore', 'then': 'hash整合した状態へ復旧', 'test_file': '`tests/test_backup_restore.py`'},
-    {'id': 'TC-RELEASE-001-03', 'priority': 'P0', 'layer': 'static', 'title': 'license manifest', 'given': 'package dependencies', 'when': '生成', 'then': 'third-party licenseと同梱/非同梱を正しく列挙', 'test_file': '`tests/test_license_manifest.py`'},
-    {'id': 'TC-RELEASE-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'Windows target', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`Windows packaging contract`を通じて「Windows target」を実行する', 'then': '「Windows target」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`electron/tests/packaging_contract.test.ts`'},
-    {'id': 'TC-RELEASE-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'Python worker bundling strategy', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`Windows packaging contract`を通じて「Python worker bundling strategy」を実行する', 'then': '「Python worker bundling strategy」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_backup_restore.py`'},
-    {'id': 'TC-RELEASE-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'ffmpeg/Tesseract存在確認', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`Windows packaging contract`を通じて「ffmpeg/Tesseract存在確認」を実行する', 'then': '「ffmpeg/Tesseract存在確認」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_license_manifest.py`'},
-    {'id': 'TC-RELEASE-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'code signing未実施表示', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`Windows packaging contract`を通じて「code signing未実施表示」を実行する', 'then': '「code signing未実施表示」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`electron/tests/packaging_contract.test.ts`'},
-    {'id': 'TC-RELEASE-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`Windows packaging contract`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_backup_restore.py`'},
-    {'id': 'TC-RELEASE-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`Windows packaging contract`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_license_manifest.py`'},
-    {'id': 'TC-RELEASE-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`electron/tests/packaging_contract.test.ts`'},
-    {'id': 'TC-RELEASE-001-11', 'priority': 'P0', 'layer': 'integration_smoke', 'title': '配布runtime群の疎通確認', 'given': '実接続テストが明示的に有効化され、必要な設定が存在する', 'when': 'package内のPython、ffmpeg、ffprobe、Tesseractについてversion取得だけを順番に行う。', 'then': 'ConnectivityResultを返す。失敗時は原因を秘密値なしで報告し、実機能テストを開始しない。', 'test_file': '`tests/test_backup_restore.py`'},
-    {'id': 'TC-RELEASE-001-12', 'priority': 'P1', 'layer': 'integration_live', 'title': '配布runtime群の実機能テスト', 'given': '`release_runtime_connectivity_gate`が成功済み', 'when': '全runtime疎通成功後、最小backup/restore・最小worker起動・最小media probeを実行する。', 'then': '最小の実機能結果を検証する。疎通fixtureなしでこのテストを単独実行できない。', 'test_file': '`tests/test_license_manifest.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/maintenance/backup.py)")
+import hashlib
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable
 
-def create_backup() -> Any:
-    """利用者dataのbackup/restoreをhash検証付きで行う。
+from script.core.errors import AppError, ErrorCode
+from script.core.serialization import dump_json, load_json
+from script.persistence.files import copy_immutable
+
+
+def _default_clock() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _iter_backup_source_files(data_root: Path) -> list[Path]:
+    return sorted(path for path in data_root.rglob("*") if path.is_file())
+
+
+class BackupManifest:
+    """1世代分のbackup(SQLite+Projectディレクトリ一式)を型付けする(17節5.4節)。"""
+
+    def __init__(self, **data: Any) -> None:
+        self.data = dict(data)
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self.data[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+
+class BackupVerificationResult:
+    """`verify_backup`の戻り値。"""
+
+    def __init__(self, **data: Any) -> None:
+        self.data = dict(data)
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self.data[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+
+class BackupRestoreResult:
+    """`restore_backup`の戻り値。"""
+
+    def __init__(self, **data: Any) -> None:
+        self.data = dict(data)
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self.data[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+
+def create_backup(data_root: Any, destination: Any, *, clock: Callable[[], str] | None = None) -> BackupManifest:
+    """SQLiteファイルとProjectディレクトリ一式を1世代のbackupとして作成する(17節5.4節)。
 
     Public contract: ``create_backup/restore_backup/verify_backup``.
     """
-    _step4_unimplemented('create_backup')
+    if not data_root:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "data_root is required")
+    if not destination:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "destination is required")
 
-def restore_backup() -> Any:
-    """利用者dataのbackup/restoreをhash検証付きで行う。
+    data_root = Path(data_root)
+    if not data_root.is_dir():
+        raise AppError(ErrorCode.NOT_FOUND, f"data_root does not exist: {data_root}")
+
+    source_files = _iter_backup_source_files(data_root)
+    if not source_files:
+        raise AppError(ErrorCode.VALIDATION_ERROR, f"data_root contains no files to back up: {data_root}")
+
+    resolve_clock = clock or _default_clock
+    created_at = resolve_clock()
+    generation_id = re.sub(r"[^0-9A-Za-z]", "", created_at)
+    generation_dir = Path(destination) / generation_id
+
+    file_hashes: dict[str, str] = {}
+    for source_file in source_files:
+        relative = source_file.relative_to(data_root).as_posix()
+        backup_file_path = generation_dir / "files" / relative
+        digest = copy_immutable(source_file, backup_file_path)
+        file_hashes[relative] = digest.value
+
+    manifest_payload = {
+        "schema_version": "1.0",
+        "generation_id": generation_id,
+        "created_at": created_at,
+        "source_data_root": str(data_root),
+        "file_hashes": file_hashes,
+    }
+    dump_json(generation_dir / "manifest.json", manifest_payload)
+
+    return BackupManifest(**manifest_payload)
+
+
+def verify_backup(backup_dir: Any) -> BackupVerificationResult:
+    """backup済みfileのhashを再計算し、manifestと照合する(17節5.4節)。
 
     Public contract: ``create_backup/restore_backup/verify_backup``.
     """
-    _step4_unimplemented('restore_backup')
+    if not backup_dir:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "backup_dir is required")
 
-def verify_backup() -> Any:
-    """利用者dataのbackup/restoreをhash検証付きで行う。
+    backup_dir = Path(backup_dir)
+    manifest_path = backup_dir / "manifest.json"
+    if not manifest_path.is_file():
+        raise AppError(ErrorCode.NOT_FOUND, f"backup manifest not found: {manifest_path}")
+
+    manifest = load_json(manifest_path)
+    file_hashes = manifest.get("file_hashes", {})
+
+    valid_files: list[str] = []
+    corrupted_files: list[str] = []
+    missing_files: list[str] = []
+    for relative, expected_hash in file_hashes.items():
+        backed_up_path = backup_dir / "files" / relative
+        if not backed_up_path.is_file():
+            missing_files.append(relative)
+            continue
+        actual_hash = _sha256_bytes(backed_up_path.read_bytes())
+        if actual_hash == expected_hash:
+            valid_files.append(relative)
+        else:
+            corrupted_files.append(relative)
+
+    return BackupVerificationResult(
+        generation_id=manifest.get("generation_id"),
+        valid_files=tuple(sorted(valid_files)),
+        corrupted_files=tuple(sorted(corrupted_files)),
+        missing_files=tuple(sorted(missing_files)),
+        all_valid=not corrupted_files and not missing_files,
+    )
+
+
+def restore_backup(backup_dir: Any, destination_data_root: Any) -> BackupRestoreResult:
+    """検証に成功したbackup fileだけをdestinationへ復旧する(17節5.4節)。
+
+    破損・欠落したfileは復旧対象から除外し、`corrupted_files`/`missing_files`へ
+    明示的に報告する(黙って破損内容を復旧しない)。
 
     Public contract: ``create_backup/restore_backup/verify_backup``.
     """
-    _step4_unimplemented('verify_backup')
+    if not backup_dir:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "backup_dir is required")
+    if not destination_data_root:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "destination_data_root is required")
+
+    backup_dir = Path(backup_dir)
+    destination_data_root = Path(destination_data_root)
+
+    verification = verify_backup(backup_dir)
+
+    restored_files: list[str] = []
+    for relative in verification.valid_files:
+        source_file = backup_dir / "files" / relative
+        destination_file = destination_data_root / relative
+        copy_immutable(source_file, destination_file)
+        restored_files.append(relative)
+
+    return BackupRestoreResult(
+        generation_id=verification.generation_id,
+        restored_files=tuple(restored_files),
+        corrupted_files=verification.corrupted_files,
+        missing_files=verification.missing_files,
+        fully_restored=verification.all_valid,
+    )

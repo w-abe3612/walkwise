@@ -1,30 +1,85 @@
-/** STEP4 typed source scaffold for electron/main/ipc/sources.ts.
- * Public bodies intentionally throw until Claude Code implements the task.
+/**
+ * electron/main/ipc/sources.ts — 公開契約: source:register handlers.
+ *
+ * Contract: docs/test-cases/TASK-UI-002-source-workspace-review-and-approval.md
+ * Spec: docs/screens/02-project-workspace-and-source-import.md(4, 8節)
  */
 
-export type Step4ContractEntry = Readonly<{ taskId: string; symbol: string; contract: string }>;
-export type Step4TestCase = Readonly<{ id: string; priority: string; layer: string; title: string; given: string; when: string; then: string; testFile: string }>;
-
-export const STEP4_PUBLIC_CONTRACTS: readonly Step4ContractEntry[] = [
-  { taskId: "TASK-UI-002", symbol: "source:register handlers", contract: "path/media type\u3092main\u3067\u518d\u691c\u8a3c\u3057Source service\u3078\u59d4\u8b72\u3059\u308b\u3002" },
-];
-
-export const STEP4_TEST_CASES: readonly Step4TestCase[] = [
-  {"id": "TC-UI-002-01", "priority": "P0", "layer": "unit", "title": "Source状態表示", "given": "5 statusのSource", "when": "render", "then": "仕様の日本語表示とreview/retry導線", "testFile": "`electron/tests/source_approval_ipc.test.ts`"},
-  {"id": "TC-UI-002-02", "priority": "P0", "layer": "unit", "title": "差し戻し", "given": "理由空/あり", "when": "request changes", "then": "空は拒否、ありはIPC1回", "testFile": "`electron/renderer/tests/ProjectWorkspace.test.ts`"},
-  {"id": "TC-UI-002-03", "priority": "P0", "layer": "unit", "title": "対象外非表示", "given": "EPUB/Kindle/video", "when": "render", "then": "選択肢にもdisabledにも表示しない", "testFile": "`electron/tests/source_approval_ipc.test.ts`"},
-  {"id": "TC-UI-002-04", "priority": "P1", "layer": "integration_mock", "title": "file dialog/drop", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`source:register handlers`を通じて「file dialog/drop」を実行する", "then": "「file dialog/drop」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/renderer/tests/ProjectWorkspace.test.ts`"},
-  {"id": "TC-UI-002-05", "priority": "P1", "layer": "unit", "title": "処理開始", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`source:register handlers`を通じて「処理開始」を実行する", "then": "「処理開始」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/tests/source_approval_ipc.test.ts`"},
-  {"id": "TC-UI-002-06", "priority": "P1", "layer": "unit", "title": "再処理/修正/問題なし", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`source:register handlers`を通じて「再処理/修正/問題なし」を実行する", "then": "「再処理/修正/問題なし」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/renderer/tests/ProjectWorkspace.test.ts`"},
-  {"id": "TC-UI-002-07", "priority": "P1", "layer": "unit", "title": "approval badges", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`source:register handlers`を通じて「approval badges」を実行する", "then": "必要な承認が揃う場合だけ後工程へ進み、未承認・invalidated・changes_requestedでは安定errorで停止する。", "testFile": "`electron/tests/source_approval_ipc.test.ts`"},
-  {"id": "TC-UI-002-08", "priority": "P0", "layer": "unit", "title": "必須入力欠落", "given": "主ID、必須path、必須設定のいずれかが欠落した入力", "when": "`source:register handlers`を実行する", "then": "副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。", "testFile": "`electron/renderer/tests/ProjectWorkspace.test.ts`"},
-  {"id": "TC-UI-002-09", "priority": "P1", "layer": "unit", "title": "再実行時の決定性", "given": "同じ入力、同じ設定、同じ依存応答", "when": "`source:register handlers`を2回実行する", "then": "仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。", "testFile": "`electron/tests/source_approval_ipc.test.ts`"},
-];
-
-function step4Unimplemented(symbol: string): never {
-  throw new Error(`STEP4 source scaffold is not implemented: ${symbol} (electron/main/ipc/sources.ts)`);
+export interface SourceSummary {
+  readonly sourceId: string;
+  readonly projectId: string;
+  readonly mediaType: string;
+  readonly status: string;
 }
 
-export function registerSourceIpcHandlers(..._args: readonly unknown[]): unknown {
-  return step4Unimplemented("registerSourceIpcHandlers");
+export interface RegisterSourceInput {
+  readonly projectId: string;
+  readonly filePath: string;
+  readonly mediaType: string;
+}
+
+export interface SourceServiceLike {
+  register(input: RegisterSourceInput): Promise<SourceSummary>;
+}
+
+export class SourceValidationError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+export interface IpcMainLike {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+}
+
+export interface SourceIpcContext {
+  readonly ipcMain: IpcMainLike;
+  readonly sourceService: SourceServiceLike;
+}
+
+/** 02-project-workspace-and-source-import.md 13節: MVP対象外形式(epub/kindle/video等)は登録できない。 */
+const ALLOWED_MEDIA_TYPES = new Set(["text", "pdf", "image"]);
+
+function validateRegisterSourceInput(raw: unknown): RegisterSourceInput {
+  if (!raw || typeof raw !== "object") {
+    throw new SourceValidationError("validation_error", "input must be an object");
+  }
+  const input = raw as Record<string, unknown>;
+
+  if (typeof input.projectId !== "string" || !input.projectId.trim()) {
+    throw new SourceValidationError("validation_error", "projectId is required");
+  }
+  if (typeof input.filePath !== "string" || !input.filePath.trim()) {
+    throw new SourceValidationError("validation_error", "filePath is required");
+  }
+  if (typeof input.mediaType !== "string" || !ALLOWED_MEDIA_TYPES.has(input.mediaType)) {
+    throw new SourceValidationError("unsupported_media_type", `unsupported media_type: ${String(input.mediaType)}`);
+  }
+
+  return {
+    projectId: input.projectId.trim(),
+    filePath: input.filePath.trim(),
+    mediaType: input.mediaType,
+  };
+}
+
+/** path/media typeをmainで再検証しSource serviceへ委譲する。 */
+export function registerSourceIpcHandlers(context: SourceIpcContext): void {
+  if (!context) {
+    throw new Error("context is required");
+  }
+  if (!context.ipcMain) {
+    throw new Error("ipcMain is required");
+  }
+  if (!context.sourceService) {
+    throw new Error("sourceService is required");
+  }
+
+  context.ipcMain.handle("source:register", async (_event: unknown, rawInput: unknown) => {
+    const validated = validateRegisterSourceInput(rawInput);
+    return context.sourceService.register(validated);
+  });
 }

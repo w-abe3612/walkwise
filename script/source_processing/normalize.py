@@ -1,49 +1,136 @@
-from __future__ import annotations
+"""script/source_processing/normalize.py — 公開契約: normalize_text(text, rules) -> NormalizationResult.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/source_processing/normalize.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-SOURCE-002
+Contract: docs/test-cases/TASK-SOURCE-002-source-normalization-chunking-and-index.md
+Spec: docs/specifications/source-preprocessing.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-SOURCE-002', 'normalize_text(text, rules) -> NormalizationResult', '低リスク・決定的変換とdiff/hashを返す。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-SOURCE-002-01', 'priority': 'P0', 'layer': 'unit', 'title': '低リスク正規化', 'given': '改行・Unicode・反復headerがある', 'when': 'normalizeする', 'then': '決定的修正とbefore/after hash/diffを返す', 'test_file': '`tests/test_source_normalization.py`'},
-    {'id': 'TC-SOURCE-002-02', 'priority': 'P0', 'layer': 'unit', 'title': 'soft chunk', 'given': '2000文字付近の段落', 'when': 'chunkする', 'then': '意味境界を優先しlocatorを失わない', 'test_file': '`tests/test_source_chunking.py`'},
-    {'id': 'TC-SOURCE-002-03', 'priority': 'P0', 'layer': 'unit', 'title': '参照整合', 'given': 'chunk manifestとtopic index', 'when': 'validateする', 'then': '全chunk IDが存在し重複がない', 'test_file': '`tests/test_source_manifest.py`'},
-    {'id': 'TC-SOURCE-002-04', 'priority': 'P1', 'layer': 'unit', 'title': 'Unicode/改行/空白の決定的正規化', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`normalize_text(text, rules) -> NormalizationResult`を通じて「Unicode/改行/空白の決定的正規化」を実行する', 'then': '「Unicode/改行/空白の決定的正規化」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_source_normalization.py`'},
-    {'id': 'TC-SOURCE-002-05', 'priority': 'P1', 'layer': 'unit', 'title': '繰返しheader/footer除去', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`normalize_text(text, rules) -> NormalizationResult`を通じて「繰返しheader/footer除去」を実行する', 'then': '「繰返しheader/footer除去」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_source_chunking.py`'},
-    {'id': 'TC-SOURCE-002-06', 'priority': 'P1', 'layer': 'unit', 'title': 'footnote分離', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`normalize_text(text, rules) -> NormalizationResult`を通じて「footnote分離」を実行する', 'then': '「footnote分離」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_source_manifest.py`'},
-    {'id': 'TC-SOURCE-002-07', 'priority': 'P1', 'layer': 'unit', 'title': 'structured Markdown/YAML/JSON', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`normalize_text(text, rules) -> NormalizationResult`を通じて「structured Markdown/YAML/JSON」を実行する', 'then': '「structured Markdown/YAML/JSON」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_source_normalization.py`'},
-    {'id': 'TC-SOURCE-002-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`normalize_text(text, rules) -> NormalizationResult`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_source_chunking.py`'},
-    {'id': 'TC-SOURCE-002-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`normalize_text(text, rules) -> NormalizationResult`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_source_manifest.py`'},
-    {'id': 'TC-SOURCE-002-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_source_normalization.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/source_processing/normalize.py)")
+import difflib
+import re
+import unicodedata
+from collections import Counter
+from dataclasses import dataclass, field
 
+from script.core.errors import AppError, ErrorCode
+from script.core.hashing import canonical_sha256
+
+_FENCE_RE = re.compile(r"(```.*?```)", re.DOTALL)
+_FOOTNOTE_LINE_RE = re.compile(r"^\[(\d+)\]:\s*(.+)$")
+_MAX_REPEATED_LINE_LENGTH = 80
+
+
+@dataclass(frozen=True)
+class NormalizationRules:
+    """低リスク・決定的な正規化の設定(source-preprocessing.md 5.2節)。"""
+
+    unicode_form: str = "NFKC"
+    remove_repeated_headers_footers: bool = True
+    separate_footnotes: bool = True
+    preserve_fenced_blocks: bool = True
+
+
+@dataclass(frozen=True)
 class NormalizationResult:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """normalize_textの戻り値。before/after hashとdiffを保持する。"""
 
-def normalize_text(text: Any, rules: Any) -> NormalizationResult:
-    """低リスク・決定的変換とdiff/hashを返す。
+    original_text: str
+    normalized_text: str
+    input_hash: str
+    output_hash: str
+    diff: tuple[str, ...] = ()
+    removed_lines: tuple[str, ...] = ()
+    footnotes: dict[str, str] = field(default_factory=dict)
 
-    Public contract: ``normalize_text(text, rules) -> NormalizationResult``.
-    """
-    _step4_unimplemented('normalize_text')
+
+def _remove_repeated_headers_footers(lines: list[str]) -> tuple[list[str], list[str]]:
+    counts = Counter(line for line in lines if line.strip())
+    repeated = {line for line, count in counts.items() if count >= 2 and len(line) <= _MAX_REPEATED_LINE_LENGTH}
+
+    kept: list[str] = []
+    removed: list[str] = []
+    seen_once: set[str] = set()
+    for line in lines:
+        if line in repeated:
+            if line in seen_once:
+                removed.append(line)
+                continue
+            seen_once.add(line)
+        kept.append(line)
+    return kept, removed
+
+
+def _extract_footnotes(lines: list[str]) -> tuple[list[str], dict[str, str]]:
+    kept: list[str] = []
+    footnotes: dict[str, str] = {}
+    for line in lines:
+        match = _FOOTNOTE_LINE_RE.match(line.strip())
+        if match:
+            footnotes[match.group(1)] = match.group(2)
+            continue
+        kept.append(line)
+    return kept, footnotes
+
+
+def _normalize_segment(text: str, rules: NormalizationRules) -> tuple[str, list[str], dict[str, str]]:
+    working = unicodedata.normalize(rules.unicode_form, text) if rules.unicode_form else text
+    working = working.replace("\r\n", "\n").replace("\r", "\n")
+    lines = [line.rstrip() for line in working.split("\n")]
+
+    removed_lines: list[str] = []
+    if rules.remove_repeated_headers_footers:
+        lines, removed_lines = _remove_repeated_headers_footers(lines)
+
+    footnotes: dict[str, str] = {}
+    if rules.separate_footnotes:
+        lines, footnotes = _extract_footnotes(lines)
+
+    return "\n".join(lines), removed_lines, footnotes
+
+
+def normalize_text(text: str, rules: NormalizationRules) -> NormalizationResult:
+    """低リスク・決定的変換とdiff/hashを返す。"""
+    if not text:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "text is required")
+    if rules is None:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "rules is required")
+
+    input_hash = canonical_sha256({"text": text})
+
+    if rules.preserve_fenced_blocks:
+        segments = _FENCE_RE.split(text)
+    else:
+        segments = [text]
+
+    normalized_segments: list[str] = []
+    all_removed_lines: list[str] = []
+    all_footnotes: dict[str, str] = {}
+    for segment in segments:
+        if segment.startswith("```") and segment.endswith("```"):
+            # structured Markdown/YAML/JSON等のfenced blockは正規化対象外(内容を変えない)。
+            normalized_segments.append(segment)
+            continue
+        normalized_segment, removed_lines, footnotes = _normalize_segment(segment, rules)
+        normalized_segments.append(normalized_segment)
+        all_removed_lines.extend(removed_lines)
+        all_footnotes.update(footnotes)
+
+    normalized_text = "".join(normalized_segments)
+    output_hash = canonical_sha256({"text": normalized_text})
+    diff = tuple(
+        difflib.unified_diff(
+            text.splitlines(),
+            normalized_text.splitlines(),
+            lineterm="",
+        )
+    )
+
+    return NormalizationResult(
+        original_text=text,
+        normalized_text=normalized_text,
+        input_hash=input_hash,
+        output_hash=output_hash,
+        diff=diff,
+        removed_lines=tuple(all_removed_lines),
+        footnotes=all_footnotes,
+    )

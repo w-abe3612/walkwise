@@ -1,9 +1,10 @@
 ---
 document_type: command_reference
 status: review
-version: '1.0'
-last_updated: '2026-07-19'
+version: '1.1'
+last_updated: '2026-07-20'
 generated_from_dump: audio_book_creation_dump_2026-07-19_173616.txt
+current_state_verified: '2026-07-20'
 related_tasks:
 - TASK-SOURCE-003
 release_scopes:
@@ -40,7 +41,10 @@ npm --version
 
 ## 4. 対象ファイル
 
-- `tests/test_source_review_service.py` — 現在のダンプでは欠落
+- `tests/test_source_review_service.py`
+
+現在の存在有無は[`CURRENT_STATE.md`](CURRENT_STATE.md)を正本とする。`TASK-SOURCE-003`は
+本実装済みであり、対象10ケース(TC-SOURCE-003-01〜10)はpassする。
 
 ## 5. 収集・型確認
 

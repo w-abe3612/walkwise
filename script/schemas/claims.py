@@ -1,62 +1,131 @@
-from __future__ import annotations
+"""script/schemas/claims.py — 公開契約: Claim/SourceEvidence/FactCheckReport.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/schemas/claims.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-CLAIM-001
+Contract: docs/test-cases/TASK-CLAIM-001-claims-evidence-and-fact-checking.md
+Spec: docs/specifications/06-claims-and-sources.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-CLAIM-001', 'Claim/SourceEvidence/FactCheckReport', '主張種別・状態・locator・検証情報を型付けする。'),
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+
+from script.core.errors import AppError, ErrorCode
+
+
+class ClaimType(str, Enum):
+    TECHNICAL_FACT = "technical_fact"
+    DEFINITION = "definition"
+    NUMERIC_FACT = "numeric_fact"
+    VERSION_SPECIFIC_BEHAVIOR = "version_specific_behavior"
+    LIMITATION = "limitation"
+    COMPARISON = "comparison"
+    CAUSAL_CLAIM = "causal_claim"
+    GENERATED_ANALOGY = "generated_analogy"
+    GENERATED_EXPLANATION = "generated_explanation"
+    OPINION = "opinion"
+
+
+class ClaimStatus(str, Enum):
+    PENDING = "pending"
+    VERIFIED = "verified"
+    PARTIALLY_VERIFIED = "partially_verified"
+    CONFLICT = "conflict"
+    UNSUPPORTED = "unsupported"
+    REJECTED = "rejected"
+    HUMAN_REVIEW_REQUIRED = "human_review_required"
+
+
+# 06-claims-and-sources.md 6節: generated_analogy/generated_explanation/opinionは
+# 事実主張とは別の検査を行うため、verified化にsource_evidenceを必須としない。
+FACTUAL_CLAIM_TYPES = frozenset(
+    {
+        ClaimType.TECHNICAL_FACT,
+        ClaimType.DEFINITION,
+        ClaimType.NUMERIC_FACT,
+        ClaimType.VERSION_SPECIFIC_BEHAVIOR,
+        ClaimType.LIMITATION,
+        ClaimType.COMPARISON,
+        ClaimType.CAUSAL_CLAIM,
+    }
 )
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-CLAIM-001-01', 'priority': 'P0', 'layer': 'unit', 'title': '抽出初期状態', 'given': '技術文を含むscript', 'when': 'extract', 'then': '全claimはpending', 'test_file': '`tests/test_claims_pipeline.py`'},
-    {'id': 'TC-CLAIM-001-02', 'priority': 'P0', 'layer': 'unit', 'title': 'verified条件', 'given': 'source locatorあり・人間承認あり', 'when': 'verify', 'then': 'verified可能。AI出力のみでは不可', 'test_file': '`tests/test_claim_validation.py`'},
-    {'id': 'TC-CLAIM-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'conflict gate', 'given': 'conflict claimを含むscript', 'when': 'publishable確認', 'then': '本番TTS前に停止する', 'test_file': '`tests/test_claims_pipeline.py`'},
-    {'id': 'TC-CLAIM-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'economy抽出はpending', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`Claim/SourceEvidence/FactCheckReport`を通じて「economy抽出はpending」を実行する', 'then': '「economy抽出はpending」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_claim_validation.py`'},
-    {'id': 'TC-CLAIM-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'evidence mapping', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`Claim/SourceEvidence/FactCheckReport`を通じて「evidence mapping」を実行する', 'then': '「evidence mapping」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_claims_pipeline.py`'},
-    {'id': 'TC-CLAIM-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'source locator', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`Claim/SourceEvidence/FactCheckReport`を通じて「source locator」を実行する', 'then': '「source locator」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_claim_validation.py`'},
-    {'id': 'TC-CLAIM-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'unsupported block', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`Claim/SourceEvidence/FactCheckReport`を通じて「unsupported block」を実行する', 'then': '「unsupported block」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_claims_pipeline.py`'},
-    {'id': 'TC-CLAIM-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`Claim/SourceEvidence/FactCheckReport`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_claim_validation.py`'},
-    {'id': 'TC-CLAIM-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`Claim/SourceEvidence/FactCheckReport`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_claims_pipeline.py`'},
-    {'id': 'TC-CLAIM-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_claim_validation.py`'},
-)
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/schemas/claims.py)")
 
-class Claim:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+@dataclass(frozen=True)
+class SourceLocator:
+    """06-claims-and-sources.md 11節: 出典の粒度。"""
 
-class FactCheckReport:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    chapter: str | None = None
+    section: str | None = None
+    page: int | None = None
 
+
+@dataclass(frozen=True)
 class SourceEvidence:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    """claims.yamlのsource_evidence[]の1件。"""
+
+    source_id: str
+    locator: SourceLocator | None = None
+    support: str = "direct"
+
+    def __post_init__(self) -> None:
+        if not self.source_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "source_id is required")
+
+
+@dataclass(frozen=True)
+class ClaimConflict:
+    """06-claims-and-sources.md 9節: 資料間の矛盾。システムは黙って一方を選ばない。"""
+
+    source_ids: tuple[str, ...]
+    resolution: str = "human_review_required"
+
+    def __post_init__(self) -> None:
+        if len(self.source_ids) < 2:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "conflict requires at least two source_ids")
+
+
+@dataclass(frozen=True)
+class Claim:
+    """claims.yamlの1件。"""
+
+    claim_id: str
+    statement: str
+    claim_type: ClaimType
+    segment_id: str | None = None
+    status: ClaimStatus = ClaimStatus.PENDING
+    source_evidence: tuple[SourceEvidence, ...] = ()
+    conflict: ClaimConflict | None = None
+    verified_by_human: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.claim_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "claim_id is required")
+        if not self.statement:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "statement is required")
+
+        if self.status is ClaimStatus.CONFLICT and self.conflict is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "conflict status requires a conflict record")
+
+        if self.status is ClaimStatus.VERIFIED:
+            # 9.1節: 高性能モデルを使用しても、AI出力だけでverifiedにしてはならない。
+            if not self.verified_by_human:
+                raise AppError(
+                    ErrorCode.VALIDATION_ERROR,
+                    "verified status requires human approval (verified_by_human=True)",
+                )
+            if self.claim_type in FACTUAL_CLAIM_TYPES and not self.source_evidence:
+                raise AppError(
+                    ErrorCode.VALIDATION_ERROR,
+                    "verified factual claims require at least one source_evidence",
+                )
+
+
+@dataclass(frozen=True)
+class FactCheckReport:
+    """claims.pyの`verify()`戻り値。chapters/<chapter_id>/reports/fact-check.json相当の内容。"""
+
+    claims: tuple[Claim, ...]
+
+    def __post_init__(self) -> None:
+        if not self.claims:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "claims must not be empty")

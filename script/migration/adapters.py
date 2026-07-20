@@ -1,49 +1,200 @@
-from __future__ import annotations
+"""script/migration/adapters.py — 公開契約: migrate_legacy_project(path, destination) -> MigrationResult.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/migration/adapters.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-MIGRATION-001
+Contract: docs/test-cases/TASK-MIGRATION-001-legacy-format-and-client-adapters.md
+Spec: docs/specifications/15-migration-and-compatibility.md(3, 4, 5, 6節), 02-process-input-output.md(12節)
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-MIGRATION-001', 'migrate_legacy_project(path, destination) -> MigrationResult', '新形式を優先し、不足時だけ旧形式を変換する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-MIGRATION-001-01', 'priority': 'P0', 'layer': 'unit', 'title': '新形式優先', 'given': '新旧両形式がある', 'when': 'read/migrate', 'then': '新形式を採用し旧形式を上書きしない', 'test_file': '`tests/test_legacy_migration.py`'},
-    {'id': 'TC-MIGRATION-001-02', 'priority': 'P0', 'layer': 'unit', 'title': 'full_book正規化', 'given': '旧unit_id=full_book', 'when': 'migrate', 'then': 'bookへ変換しprovenanceを記録', 'test_file': '`tests/test_legacy_input_priority.py`'},
-    {'id': 'TC-MIGRATION-001-03', 'priority': 'P0', 'layer': 'unit', 'title': '不明項目', 'given': '変換不能field', 'when': 'migrate', 'then': '推測せずwarning/reportへ残す', 'test_file': '`tests/test_legacy_migration.py`'},
-    {'id': 'TC-MIGRATION-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'bookId/project_id', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`LegacyBook/LegacySection/LegacyAudioInput`を通じて「bookId/project_id」を実行する', 'then': '「bookId/project_id」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_legacy_input_priority.py`'},
-    {'id': 'TC-MIGRATION-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'sectionId/chapter_id', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`LegacyBook/LegacySection/LegacyAudioInput`を通じて「sectionId/chapter_id」を実行する', 'then': '「sectionId/chapter_id」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_legacy_migration.py`'},
-    {'id': 'TC-MIGRATION-001-06', 'priority': 'P1', 'layer': 'unit', 'title': 'approval.yaml/approvals.yaml', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`LegacyBook/LegacySection/LegacyAudioInput`を通じて「approval.yaml/approvals.yaml」を実行する', 'then': '必要な承認が揃う場合だけ後工程へ進み、未承認・invalidated・changes_requestedでは安定errorで停止する。', 'test_file': '`tests/test_legacy_input_priority.py`'},
-    {'id': 'TC-MIGRATION-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'legacy text priority', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`LegacyBook/LegacySection/LegacyAudioInput`を通じて「legacy text priority」を実行する', 'then': '「legacy text priority」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_legacy_migration.py`'},
-    {'id': 'TC-MIGRATION-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`LegacyBook/LegacySection/LegacyAudioInput`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_legacy_input_priority.py`'},
-    {'id': 'TC-MIGRATION-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`LegacyBook/LegacySection/LegacyAudioInput`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_legacy_migration.py`'},
-    {'id': 'TC-MIGRATION-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_legacy_input_priority.py`'},
-)
+from __future__ import annotations
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/migration/adapters.py)")
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable
+
+from script.core.errors import AppError, ErrorCode
+from script.core.serialization import dump_json, load_json, load_yaml
+from script.migration.legacy_models import LegacyAudioInput, LegacyBook, LegacySection
+from script.migration.report import MigrationReport
+
+_KNOWN_BOOK_FIELDS = frozenset(
+    {"bookId", "title", "deliverableTitle", "enableSections", "audioExportUnits", "tts"}
+)
+_KNOWN_SECTION_FIELDS = frozenset(
+    {"sectionId", "fileName", "order", "fileTitle", "startPage", "endPage", "sourceId"}
+)
+_APPROVED_LEGACY_STATUSES = frozenset({"approved"})
+
+
+def _default_clock() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
 
 class MigrationResult:
-    """Typed data placeholder; fields are finalized during task implementation."""
+    """`migrate_legacy_project`の戻り値を型付けする。"""
+
     def __init__(self, **data: Any) -> None:
         self.data = dict(data)
+
     def __getattr__(self, name: str) -> Any:
         try:
             return self.data[name]
         except KeyError as exc:
             raise AttributeError(name) from exc
 
-def migrate_legacy_project(path: Any, destination: Any) -> MigrationResult:
-    """新形式を優先し、不足時だけ旧形式を変換する。
+
+def _has_new_format(source: Path) -> bool:
+    return (source / "project" / "project-plan.yaml").exists()
+
+
+def _read_legacy_approval(source: Path) -> dict[str, Any] | None:
+    for candidate in (source / "project" / "approval.yaml", source / "approval.yaml"):
+        if candidate.exists():
+            data = load_yaml(candidate)
+            if not isinstance(data, dict):
+                raise AppError(ErrorCode.VALIDATION_ERROR, f"invalid legacy approval file: {candidate}")
+            return data
+    return None
+
+
+def migrate_legacy_project(
+    path: Any,
+    destination: Any,
+    *,
+    exists: Callable[[str], bool] | None = None,
+    clock: Callable[[], str] | None = None,
+) -> MigrationResult:
+    """新形式を優先し、不足時だけ旧形式を変換する(15-migration-and-compatibility.md 3節)。
 
     Public contract: ``migrate_legacy_project(path, destination) -> MigrationResult``.
     """
-    _step4_unimplemented('migrate_legacy_project')
+    if not path:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "path is required")
+    if not destination:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "destination is required")
+
+    source = Path(path)
+    dest = Path(destination)
+    resolve_clock = clock or _default_clock
+
+    if _has_new_format(source):
+        # 3節「新形式を優先して読む」: 旧形式を上書きしない。destinationへも書込まない。
+        return MigrationResult(
+            project_id=None,
+            skipped=True,
+            reason="new_format_present",
+            chapters=(),
+            report=MigrationReport().to_dict(),
+        )
+
+    book_path = source / "book.json"
+    if not book_path.exists():
+        raise AppError(ErrorCode.NOT_FOUND, f"legacy book.json not found: {book_path}")
+
+    book_data = load_json(book_path)
+    if not isinstance(book_data, dict):
+        raise AppError(ErrorCode.VALIDATION_ERROR, f"invalid legacy book.json: {book_path}")
+
+    legacy_book = LegacyBook(**book_data)
+
+    approval_data = _read_legacy_approval(source)
+    if approval_data is not None:
+        status = approval_data.get("status")
+        if status not in _APPROVED_LEGACY_STATUSES:
+            # 副作用(destinationへの書込)を一切開始する前に安定errorで停止する。
+            raise AppError(
+                ErrorCode.PERMISSION_DENIED,
+                f"legacy approval is not migratable from status: {status!r}",
+            )
+
+    report = MigrationReport()
+    for field_name in book_data:
+        if field_name not in _KNOWN_BOOK_FIELDS:
+            report.add_unmigrated(field_name, book_data[field_name])
+            report.add_warning(f"unknown book.json field ignored: {field_name}")
+    if approval_data is not None:
+        report.add_conversion("legacy approval.yaml recognized as approved (approvals.yaml conversion deferred)")
+
+    sections_path = source / "sections.json"
+    section_entries: list[dict[str, Any]] = []
+    if sections_path.exists():
+        sections_data = load_json(sections_path)
+        if not isinstance(sections_data, list):
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"invalid legacy sections.json: {sections_path}")
+        for entry in sections_data:
+            if not isinstance(entry, dict):
+                raise AppError(ErrorCode.VALIDATION_ERROR, f"invalid legacy section entry: {entry!r}")
+            legacy_section = LegacySection(**entry)
+            for field_name in entry:
+                if field_name not in _KNOWN_SECTION_FIELDS:
+                    report.add_unmigrated(field_name, entry[field_name])
+                    report.add_warning(f"unknown sections.json field ignored: {field_name}")
+            section_entries.append(
+                {
+                    "chapter_id": legacy_section.chapter_id,
+                    "order": entry.get("order", 0),
+                    "file_title": entry.get("fileTitle", ""),
+                    "source_id": entry.get("sourceId"),
+                }
+            )
+    else:
+        section_entries.append(
+            {"chapter_id": "book", "order": 0, "file_title": legacy_book.title, "source_id": None}
+        )
+
+    resolve_exists = exists or (lambda relative: (source / relative).exists())
+
+    chapters: list[dict[str, Any]] = []
+    for entry in sorted(section_entries, key=lambda item: item["order"]):
+        is_full_book = entry["chapter_id"] == "book" and not sections_path.exists()
+        unit_id = "full_book" if is_full_book else entry["chapter_id"]
+
+        if is_full_book:
+            report.add_conversion("full_book unit normalized to book-level chapter")
+            report.add_provenance(
+                {"chapter_id": "book", "legacy_unit_id": "full_book", "normalized_unit_id": "book"}
+            )
+
+        audio_input = LegacyAudioInput(unit_id=unit_id, exists=resolve_exists)
+        try:
+            resolved = audio_input.resolve()
+        except AppError:
+            resolved = None
+
+        if resolved is not None:
+            report.add_provenance(
+                {
+                    "chapter_id": entry["chapter_id"],
+                    "legacy_input": True,
+                    "source_path": resolved["source_path"],
+                    "imported_at": resolve_clock(),
+                }
+            )
+            report.add_warning(f"legacy text input used for chapter: {entry['chapter_id']}")
+
+        chapters.append(
+            {
+                "chapter_id": entry["chapter_id"],
+                "order": entry["order"],
+                "file_title": entry["file_title"],
+                "source_id": entry["source_id"],
+                "legacy_text_source": resolved["source_path"] if resolved else None,
+            }
+        )
+
+    result_payload: dict[str, Any] = {
+        "project_id": legacy_book.project_id,
+        "skipped": False,
+        "reason": None,
+        "chapters": tuple(chapters),
+        "report": report.to_dict(),
+    }
+
+    dump_json(
+        dest / "migration-report.json",
+        {
+            "project_id": result_payload["project_id"],
+            "chapters": result_payload["chapters"],
+            "report": result_payload["report"],
+        },
+    )
+
+    return MigrationResult(**result_payload)

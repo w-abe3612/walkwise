@@ -1,30 +1,66 @@
-/** STEP4 typed source scaffold for electron/renderer/router.ts.
- * Public bodies intentionally throw until Claude Code implements the task.
+/**
+ * electron/renderer/router.ts — 公開契約: navigation state.
+ *
+ * Contract: docs/test-cases/TASK-UI-005-renderer-state-routing-errors-and-accessibility.md
+ * Spec: docs/screens/README.md(6節), 01〜05の各画面route定義
  */
 
-export type Step4ContractEntry = Readonly<{ taskId: string; symbol: string; contract: string }>;
-export type Step4TestCase = Readonly<{ id: string; priority: string; layer: string; title: string; given: string; when: string; then: string; testFile: string }>;
+export type ScreenId = "projects-list" | "project-workspace" | "build-settings" | "jobs" | "artifacts";
 
-export const STEP4_PUBLIC_CONTRACTS: readonly Step4ContractEntry[] = [
-  { taskId: "TASK-UI-005", symbol: "navigation state", contract: "5\u753b\u9762\u3068Project\u6587\u8108\u3092\u6c7a\u5b9a\u7684\u306b\u9077\u79fb\u3059\u308b\u3002" },
+/** docs/screens/README.md 6節・01〜05の承認済み5画面(この順序で固定)。 */
+export const NAVIGATION_SCREENS: readonly ScreenId[] = [
+  "projects-list",
+  "project-workspace",
+  "build-settings",
+  "jobs",
+  "artifacts",
 ];
 
-export const STEP4_TEST_CASES: readonly Step4TestCase[] = [
-  {"id": "TC-UI-005-01", "priority": "P0", "layer": "unit", "title": "5画面navigation", "given": "Project文脈あり/なし", "when": "遷移", "then": "無効routeを安全な既定画面へ戻す", "testFile": "`electron/renderer/tests/navigation.test.ts`"},
-  {"id": "TC-UI-005-02", "priority": "P0", "layer": "unit", "title": "focus/error summary", "given": "validation error", "when": "render", "then": "error summaryへfocus移動しariaで関連付け", "testFile": "`electron/renderer/tests/accessibility.test.ts`"},
-  {"id": "TC-UI-005-03", "priority": "P0", "layer": "unit", "title": "keyboard only", "given": "mouseなし", "when": "主要操作", "then": "全操作に到達可能", "testFile": "`electron/renderer/tests/navigation.test.ts`"},
-  {"id": "TC-UI-005-04", "priority": "P1", "layer": "unit", "title": "Project context", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`navigation state`を通じて「Project context」を実行する", "then": "「Project context」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/renderer/tests/accessibility.test.ts`"},
-  {"id": "TC-UI-005-05", "priority": "P1", "layer": "integration_mock", "title": "typed API wrapper", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`navigation state`を通じて「typed API wrapper」を実行する", "then": "「typed API wrapper」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/renderer/tests/navigation.test.ts`"},
-  {"id": "TC-UI-005-06", "priority": "P1", "layer": "unit", "title": "loading skeleton", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`navigation state`を通じて「loading skeleton」を実行する", "then": "「loading skeleton」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/renderer/tests/accessibility.test.ts`"},
-  {"id": "TC-UI-005-07", "priority": "P1", "layer": "unit", "title": "日本語利用者message/technical detail分離", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`navigation state`を通じて「日本語利用者message/technical detail分離」を実行する", "then": "「日本語利用者message/technical detail分離」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/renderer/tests/navigation.test.ts`"},
-  {"id": "TC-UI-005-08", "priority": "P0", "layer": "unit", "title": "必須入力欠落", "given": "主ID、必須path、必須設定のいずれかが欠落した入力", "when": "`navigation state`を実行する", "then": "副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。", "testFile": "`electron/renderer/tests/accessibility.test.ts`"},
-  {"id": "TC-UI-005-09", "priority": "P1", "layer": "unit", "title": "再実行時の決定性", "given": "同じ入力、同じ設定、同じ依存応答", "when": "`navigation state`を2回実行する", "then": "仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。", "testFile": "`electron/renderer/tests/navigation.test.ts`"},
-];
+const VALID_SCREENS = new Set<string>(NAVIGATION_SCREENS);
 
-function step4Unimplemented(symbol: string): never {
-  throw new Error(`STEP4 source scaffold is not implemented: ${symbol} (electron/renderer/router.ts)`);
+/** projects-list以外は`:project_id`を伴うrouteのため、Project文脈が必須。 */
+const SCREENS_REQUIRING_PROJECT = new Set<ScreenId>(["project-workspace", "build-settings", "jobs", "artifacts"]);
+
+const DEFAULT_SCREEN: ScreenId = "projects-list";
+
+export interface NavigationState {
+  readonly screen: ScreenId;
+  readonly projectId: string | null;
 }
 
-export function router(..._args: readonly unknown[]): unknown {
-  return step4Unimplemented("router");
+export interface NavigateOptions {
+  readonly screen: string;
+  readonly projectId?: string | null;
+}
+
+export class NavigationValidationError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+/** 5画面とProject文脈を決定的に遷移する。無効routeやProject文脈欠落は既定画面へ戻す。 */
+export function resolveNavigation(options: NavigateOptions): NavigationState {
+  if (!options) {
+    throw new NavigationValidationError("validation_error", "options is required");
+  }
+  if (typeof options.screen !== "string" || !options.screen) {
+    throw new NavigationValidationError("validation_error", "screen is required");
+  }
+
+  if (!VALID_SCREENS.has(options.screen)) {
+    return { screen: DEFAULT_SCREEN, projectId: null };
+  }
+  const screen = options.screen as ScreenId;
+  const projectId = options.projectId ?? null;
+
+  if (SCREENS_REQUIRING_PROJECT.has(screen) && !projectId) {
+    // Project文脈がない状態でProject-scoped画面へは遷移できないため、安全な既定画面へ戻す。
+    return { screen: DEFAULT_SCREEN, projectId: null };
+  }
+
+  return { screen, projectId };
 }

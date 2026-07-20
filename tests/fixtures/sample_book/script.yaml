@@ -1,0 +1,43 @@
+schema_version: "1.0"
+chapter_id: chapter-01
+segments:
+  - segment_id: segment-01
+    order: 1
+    text: "導入部分の本文。"
+    tts_text: "導入部分の音声向け本文。"
+    claim_ids: []
+  - segment_id: segment-02
+    order: 2
+    text: "背景説明の本文。"
+    tts_text: "背景説明の音声向け本文。"
+    claim_ids: []
+  - segment_id: segment-03
+    order: 3
+    text: "定義の本文。"
+    tts_text: "定義の音声向け本文。"
+    claim_ids: ["claim-01-definition"]
+  - segment_id: segment-04
+    order: 4
+    text: "数値の本文。"
+    tts_text: "数値の音声向け本文。"
+    claim_ids: ["claim-02-numeric"]
+  - segment_id: segment-05
+    order: 5
+    text: "比較の本文。"
+    tts_text: "比較の音声向け本文。"
+    claim_ids: []
+  - segment_id: segment-06
+    order: 6
+    text: "制限事項の本文。"
+    tts_text: "制限事項の音声向け本文。"
+    claim_ids: ["claim-03-limitation"]
+  - segment_id: segment-07
+    order: 7
+    text: "例え話の本文。"
+    tts_text: "例え話の音声向け本文。"
+    claim_ids: ["claim-04-analogy"]
+  - segment_id: segment-08
+    order: 8
+    text: "まとめの本文。"
+    tts_text: "まとめの音声向け本文。"
+    claim_ids: []

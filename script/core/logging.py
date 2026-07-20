@@ -1,57 +1,59 @@
-from __future__ import annotations
+"""script/core/logging.py — 公開契約: configure_logging(log_dir, *, level='INFO') -> logging.Logger.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/core/logging.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-CORE-001
+Contract: docs/test-cases/TASK-CORE-001-configuration-errors-and-logging.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-CORE-001', "configure_logging(log_dir: Path, *, level: str = 'INFO') -> logging.Logger", 'ISO 8601 timestampでファイルログを設定し秘密値をredactする。'),
+from __future__ import annotations
+
+import logging
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+
+_LOGGER_NAME = "walkwise"
+_LOG_FILE_NAME = "walkwise.log"
+_REDACTED = "***REDACTED***"
+
+_SECRET_PATTERN = re.compile(
+    r"(?i)(['\"]?\b(?:api[_-]?key|access[_-]?token|secret|password)\b['\"]?\s*[:=]\s*['\"]?)"
+    r"([^\s,'\"}\]]+)"
 )
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-CORE-001-01', 'priority': 'P0', 'layer': 'unit', 'title': '設定優先順位', 'given': '既定値・env・明示値が異なる', 'when': 'AppConfigを読込む', 'then': '明示値>env>既定値の順で採用する', 'test_file': '`tests/test_core_config.py`'},
-    {'id': 'TC-CORE-001-02', 'priority': 'P0', 'layer': 'unit', 'title': '公開エラー分離', 'given': 'technical detailにstack/pathがある', 'when': '公開dictへ変換する', 'then': '利用者向けmessageには技術情報を混入しない', 'test_file': '`tests/test_core_errors.py`'},
-    {'id': 'TC-CORE-001-03', 'priority': 'P0', 'layer': 'unit', 'title': 'ログredaction', 'given': 'API keyを含むcontextがある', 'when': 'ログを出力する', 'then': 'keyを伏せ、timestampはtimezone付きISO 8601になる', 'test_file': '`tests/test_core_logging.py`'},
-    {'id': 'TC-CORE-001-04', 'priority': 'P1', 'layer': 'unit', 'title': '設定読込の優先順位', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`AppConfig.load(env: Mapping[str, str] \\', 'then': 'None = None) -> AppConfig`を通じて「設定読込の優先順位」を実行する', 'test_file': '「設定読込の優先順位」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。'},
-    {'id': 'TC-CORE-001-05', 'priority': 'P1', 'layer': 'unit', 'title': '機密値をログへ出さない', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`AppConfig.load(env: Mapping[str, str] \\', 'then': 'None = None) -> AppConfig`を通じて「機密値をログへ出さない」を実行する', 'test_file': '「機密値をログへ出さない」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。'},
-    {'id': 'TC-CORE-001-06', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`AppConfig.load(env: Mapping[str, str] \\', 'then': 'None = None) -> AppConfig`を実行する', 'test_file': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。'},
-    {'id': 'TC-CORE-001-07', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`AppConfig.load(env: Mapping[str, str] \\', 'then': 'None = None) -> AppConfig`を2回実行する', 'test_file': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。'},
-    {'id': 'TC-CORE-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_core_errors.py`'},
-)
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/core/logging.py)")
 
-class INFO:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+def _redact(text: str) -> str:
+    return _SECRET_PATTERN.sub(lambda m: f"{m.group(1)}{_REDACTED}", text)
 
-class Logger:
-    """Typed data placeholder; fields are finalized during task implementation."""
-    def __init__(self, **data: Any) -> None:
-        self.data = dict(data)
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self.data[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
 
-def configure_logging(log_dir: Path, *, level: str = 'INFO') -> logging.Logger:
-    """ISO 8601 timestampでファイルログを設定し秘密値をredactする。
+class _RedactingFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.args:
+            record.msg = _redact(record.getMessage())
+            record.args = ()
+        else:
+            record.msg = _redact(str(record.msg))
+        return True
 
-    Public contract: ``configure_logging(log_dir: Path, *, level: str = 'INFO') -> logging.Logger``.
-    """
-    _step4_unimplemented('configure_logging')
+
+class _UtcIsoFormatter(logging.Formatter):
+    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
+        return datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat()
+
+
+def configure_logging(log_dir: Path, *, level: str = "INFO") -> logging.Logger:
+    """ISO 8601 timestampでファイルログを設定し秘密値をredactする。"""
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    logger = logging.getLogger(_LOGGER_NAME)
+    logger.setLevel(level)
+    logger.propagate = False
+
+    for existing_handler in list(logger.handlers):
+        logger.removeHandler(existing_handler)
+    for existing_filter in list(logger.filters):
+        logger.removeFilter(existing_filter)
+
+    handler = logging.FileHandler(log_dir / _LOG_FILE_NAME, encoding="utf-8")
+    handler.setFormatter(_UtcIsoFormatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    logger.addHandler(handler)
+    logger.addFilter(_RedactingFilter())
+    return logger

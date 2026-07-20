@@ -1,42 +1,233 @@
-/** STEP4 typed source scaffold for electron/main/worker_manager.ts.
- * Public bodies intentionally throw until Claude Code implements the task.
+/**
+ * electron/main/worker_manager.ts — 公開契約: WorkerManager.start/stop/request.
+ *
+ * Contract: docs/test-cases/TASK-DESKTOP-002-electron-data-db-and-worker-bootstrap.md
+ * Spec: docs/specifications/21-electron-python-worker-interface.md(5.2〜5.5節)
  */
 
-export type Step4ContractEntry = Readonly<{ taskId: string; symbol: string; contract: string }>;
-export type Step4TestCase = Readonly<{ id: string; priority: string; layer: string; title: string; given: string; when: string; then: string; testFile: string }>;
-
-export const STEP4_PUBLIC_CONTRACTS: readonly Step4ContractEntry[] = [
-  { taskId: "TASK-DESKTOP-002", symbol: "WorkerManager.start/stop/request", contract: "Python worker subprocess\u3068JSON Lines\u3092\u7ba1\u7406\u3059\u308b\u3002" },
-];
-
-export const STEP4_TEST_CASES: readonly Step4TestCase[] = [
-  {"id": "TC-DESKTOP-002-01", "priority": "P0", "layer": "integration_mock", "title": "bootstrap順", "given": "初回起動", "when": "bootstrap", "then": "data root→backup/migration→DB→worker healthの順", "testFile": "`electron/tests/bootstrap.test.ts`"},
-  {"id": "TC-DESKTOP-002-02", "priority": "P0", "layer": "integration_mock", "title": "migration失敗", "given": "DB migration error", "when": "bootstrap", "then": "windowへ安全なerrorを返しworkerを開始しない", "testFile": "`electron/tests/worker_manager.test.ts`"},
-  {"id": "TC-DESKTOP-002-03", "priority": "P0", "layer": "integration_mock", "title": "worker疎通失敗", "given": "ping失敗", "when": "bootstrap", "then": "再試行/診断可能な起動errorにする", "testFile": "`electron/tests/bootstrap.test.ts`"},
-  {"id": "TC-DESKTOP-002-04", "priority": "P1", "layer": "unit", "title": "appData配下root", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`bootstrapApplication(): Promise<AppContext>`を通じて「appData配下root」を実行する", "then": "「appData配下root」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/tests/worker_manager.test.ts`"},
-  {"id": "TC-DESKTOP-002-05", "priority": "P1", "layer": "unit", "title": "stale recovery", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`bootstrapApplication(): Promise<AppContext>`を通じて「stale recovery」を実行する", "then": "「stale recovery」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/tests/bootstrap.test.ts`"},
-  {"id": "TC-DESKTOP-002-06", "priority": "P1", "layer": "unit", "title": "Python executable解決", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`bootstrapApplication(): Promise<AppContext>`を通じて「Python executable解決」を実行する", "then": "「Python executable解決」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/tests/worker_manager.test.ts`"},
-  {"id": "TC-DESKTOP-002-07", "priority": "P1", "layer": "unit", "title": "shutdown cleanup", "given": "承認済み仕様に適合する最小入力と、必要な依存をmockした状態", "when": "`bootstrapApplication(): Promise<AppContext>`を通じて「shutdown cleanup」を実行する", "then": "「shutdown cleanup」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。", "testFile": "`electron/tests/bootstrap.test.ts`"},
-  {"id": "TC-DESKTOP-002-08", "priority": "P0", "layer": "unit", "title": "必須入力欠落", "given": "主ID、必須path、必須設定のいずれかが欠落した入力", "when": "`bootstrapApplication(): Promise<AppContext>`を実行する", "then": "副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。", "testFile": "`electron/tests/worker_manager.test.ts`"},
-  {"id": "TC-DESKTOP-002-09", "priority": "P1", "layer": "unit", "title": "再実行時の決定性", "given": "同じ入力、同じ設定、同じ依存応答", "when": "`bootstrapApplication(): Promise<AppContext>`を2回実行する", "then": "仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。", "testFile": "`electron/tests/bootstrap.test.ts`"},
-  {"id": "TC-DESKTOP-002-10", "priority": "P0", "layer": "unit", "title": "入力・既存成果物の不変性", "given": "hash取得済みの入力と既存正常成果物", "when": "正常処理または意図的な失敗を発生させる", "then": "入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。", "testFile": "`electron/tests/worker_manager.test.ts`"},
-  {"id": "TC-DESKTOP-002-11", "priority": "P0", "layer": "integration_smoke", "title": "Python worker subprocessの疎通確認", "given": "実接続テストが明示的に有効化され、必要な設定が存在する", "when": "workerを起動してhealth/ping requestだけを送り、JSON Linesの正常応答と終了を確認する。", "then": "ConnectivityResultを返す。失敗時は原因を秘密値なしで報告し、実機能テストを開始しない。", "testFile": "`electron/tests/bootstrap.test.ts`"},
-  {"id": "TC-DESKTOP-002-12", "priority": "P1", "layer": "integration_live", "title": "Python worker subprocessの実機能テスト", "given": "`worker_connectivity_gate`が成功済み", "when": "疎通成功後、固定の副作用のないcommandをdispatchしてprogress/result順を確認する。", "then": "最小の実機能結果を検証する。疎通fixtureなしでこのテストを単独実行できない。", "testFile": "`electron/tests/worker_manager.test.ts`"},
-];
-
-function step4Unimplemented(symbol: string): never {
-  throw new Error(`STEP4 source scaffold is not implemented: ${symbol} (electron/main/worker_manager.ts)`);
+export interface WritableStreamLike {
+  write(chunk: string): void;
 }
 
+export interface ReadableStreamLike {
+  on(event: "data", listener: (chunk: Buffer | string) => void): void;
+}
+
+export interface ChildProcessLike {
+  readonly stdin: WritableStreamLike;
+  readonly stdout: ReadableStreamLike;
+  readonly stderr: ReadableStreamLike;
+  on(event: "exit", listener: (code: number | null) => void): void;
+  on(event: "error", listener: (err: Error) => void): void;
+  kill(signal?: string): void;
+}
+
+export type SpawnFn = (command: string, args: readonly string[]) => ChildProcessLike;
+
+export interface WorkerEventLike {
+  readonly event: string;
+  readonly job_id?: string;
+  readonly [key: string]: unknown;
+}
+
+const TERMINAL_EVENTS = new Set(["completed", "error", "cancelled"]);
+
+export interface WorkerManagerOptions {
+  readonly command: string;
+  readonly args?: readonly string[];
+  /** 実subprocess起動は本タスクの通常テストで使わないため、呼び出し側が必ず注入する。 */
+  readonly spawn: SpawnFn;
+  readonly requestTimeoutMs?: number;
+  readonly onStderr?: (chunk: string) => void;
+  readonly generateJobId?: () => string;
+}
+
+export interface WorkerRequestResult {
+  readonly jobId: string;
+  readonly events: readonly WorkerEventLike[];
+  readonly terminalEvent: WorkerEventLike;
+}
+
+interface PendingRequest {
+  readonly jobId: string;
+  readonly events: WorkerEventLike[];
+  readonly resolve: (result: WorkerRequestResult) => void;
+  readonly reject: (error: Error) => void;
+  timeoutHandle?: ReturnType<typeof setTimeout>;
+}
+
+let jobIdCounter = 0;
+function defaultGenerateJobId(): string {
+  jobIdCounter += 1;
+  return `worker-req-${jobIdCounter}`;
+}
+
+/** Python worker subprocessとJSON Lines(21-electron-python-worker-interface.md)を管理する。 */
 export class WorkerManager {
-  constructor(..._args: readonly unknown[]) {}
-  start(..._args: readonly unknown[]): unknown {
-    return step4Unimplemented("WorkerManager.start");
+  private readonly command: string;
+  private readonly args: readonly string[];
+  private readonly spawnFn: SpawnFn;
+  private readonly requestTimeoutMs: number;
+  private readonly onStderr: (chunk: string) => void;
+  private readonly generateJobId: () => string;
+
+  private child: ChildProcessLike | null = null;
+  private stopped = true;
+  private stdoutBuffer = "";
+  private readonly pending = new Map<string, PendingRequest>();
+
+  constructor(options: WorkerManagerOptions) {
+    if (!options) {
+      throw new Error("options is required");
+    }
+    if (!options.command) {
+      throw new Error("command is required");
+    }
+    if (!options.spawn) {
+      throw new Error("spawn is required");
+    }
+
+    this.command = options.command;
+    this.args = options.args ?? [];
+    this.spawnFn = options.spawn;
+    this.requestTimeoutMs = options.requestTimeoutMs ?? 30000;
+    this.onStderr = options.onStderr ?? (() => {});
+    this.generateJobId = options.generateJobId ?? defaultGenerateJobId;
   }
-  stop(..._args: readonly unknown[]): unknown {
-    return step4Unimplemented("WorkerManager.stop");
+
+  start(): void {
+    if (!this.stopped) {
+      return; // 既に起動済みであれば冪等に何もしない
+    }
+
+    const child = this.spawnFn(this.command, this.args);
+    this.child = child;
+    this.stopped = false;
+    this.stdoutBuffer = "";
+
+    child.stdout.on("data", (chunk) => this.handleStdoutChunk(chunk));
+    child.stderr.on("data", (chunk) => this.onStderr(chunk.toString()));
+    child.on("exit", (code) => this.handleExit(code));
+    child.on("error", (err) => this.handleFatalError(err));
   }
-  request(..._args: readonly unknown[]): unknown {
-    return step4Unimplemented("WorkerManager.request");
+
+  /** 起動済みprocessを冪等に停止する。 */
+  stop(): void {
+    if (this.stopped || !this.child) {
+      this.stopped = true;
+      return;
+    }
+    const child = this.child;
+    this.stopped = true;
+    this.child = null;
+    this.rejectAllPending(new Error("worker_manager_stopped"));
+    child.kill();
   }
+
+  /** commandをdispatchし、terminal eventまでのeventを集めて返す。 */
+  request(command: string, parameters: Record<string, unknown> = {}): Promise<WorkerRequestResult> {
+    if (!command) {
+      return Promise.reject(new Error("command is required"));
+    }
+    if (this.stopped || !this.child) {
+      return Promise.reject(new Error("worker_not_running"));
+    }
+
+    const jobId = this.generateJobId();
+    const line = JSON.stringify({ job_id: jobId, job_type: command, parameters });
+
+    return new Promise<WorkerRequestResult>((resolve, reject) => {
+      const pendingEntry: PendingRequest = { jobId, events: [], resolve, reject };
+      pendingEntry.timeoutHandle = setTimeout(() => {
+        this.pending.delete(jobId);
+        reject(new Error(`worker_request_timeout: ${command}`));
+      }, this.requestTimeoutMs);
+      this.pending.set(jobId, pendingEntry);
+
+      try {
+        this.child!.stdin.write(`${line}\n`);
+      } catch (err) {
+        this.pending.delete(jobId);
+        clearTimeout(pendingEntry.timeoutHandle);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+  }
+
+  private handleStdoutChunk(chunk: Buffer | string): void {
+    this.stdoutBuffer += chunk.toString();
+    const lines = this.stdoutBuffer.split("\n");
+    this.stdoutBuffer = lines.pop() ?? "";
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      let parsed: WorkerEventLike | null = null;
+      try {
+        parsed = JSON.parse(line) as WorkerEventLike;
+      } catch {
+        // 不正JSONは技術ログ扱いとし、workerプロセス全体は継続する(protocol stdoutと分離)。
+        this.onStderr(`malformed worker stdout line: ${line}`);
+        continue;
+      }
+
+      this.handleEvent(parsed);
+    }
+  }
+
+  private handleEvent(event: WorkerEventLike): void {
+    const jobId = event.job_id;
+    if (!jobId) return;
+    const entry = this.pending.get(jobId);
+    if (!entry) return;
+
+    entry.events.push(event);
+    if (TERMINAL_EVENTS.has(event.event)) {
+      this.pending.delete(jobId);
+      clearTimeout(entry.timeoutHandle);
+      if (event.event === "error") {
+        entry.reject(new Error(`worker_request_failed: ${String(event.message ?? event.code ?? "unknown")}`));
+      } else {
+        entry.resolve({ jobId, events: entry.events, terminalEvent: event });
+      }
+    }
+  }
+
+  private handleExit(_code: number | null): void {
+    this.stopped = true;
+    this.child = null;
+    this.rejectAllPending(new Error("worker_exited_unexpectedly"));
+  }
+
+  private handleFatalError(err: Error): void {
+    this.stopped = true;
+    this.child = null;
+    this.rejectAllPending(err);
+  }
+
+  private rejectAllPending(error: Error): void {
+    for (const entry of this.pending.values()) {
+      clearTimeout(entry.timeoutHandle);
+      entry.reject(error);
+    }
+    this.pending.clear();
+  }
+}
+
+export interface ResolvePythonExecutableOptions {
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly platform: NodeJS.Platform;
+}
+
+/** 環境変数`WALKWISE_PYTHON_EXECUTABLE`を優先し、なければplatform既定candidateを返す。 */
+export function resolvePythonExecutable(options: ResolvePythonExecutableOptions): string {
+  if (!options) {
+    throw new Error("options is required");
+  }
+  const fromEnv = options.env.WALKWISE_PYTHON_EXECUTABLE;
+  if (fromEnv && fromEnv.trim()) {
+    return fromEnv.trim();
+  }
+  return options.platform === "win32" ? "python" : "python3";
 }

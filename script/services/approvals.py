@@ -1,70 +1,197 @@
-from __future__ import annotations
+"""script/services/approvals.py — 公開契約: ApprovalService.submit/approve/request_changes/invalidate_changed_targets/assert_gate.
 
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Protocol, Sequence
-
-"""STEP4 typed source scaffold for script/services/approvals.py.
-
-This file is the implementation contract for the related STEP2 task(s).
-Public bodies intentionally raise ``NotImplementedError`` until Claude Code implements them.
-Tasks: TASK-APPROVAL-001
+Contract: docs/test-cases/TASK-APPROVAL-001-approval-workflow-and-invalidation.md
+Spec: docs/specifications/07-approval-workflow.md
 """
 
-STEP4_PUBLIC_CONTRACTS: tuple[tuple[str, str, str], ...] = (
-    ('TASK-APPROVAL-001', 'ApprovalService.submit/approve/request_changes', '合法な承認遷移と理由必須の差し戻しを行う。'),
-    ('TASK-APPROVAL-001', 'ApprovalService.invalidate_changed_targets(...) -> list[str]', 'hash/revision変更の影響を受ける承認だけinvalidatedにする。'),
-    ('TASK-APPROVAL-001', 'ApprovalService.assert_gate(project_id, gate) -> None', '未承認gateは安定error codeで停止する。'),
-)
-STEP4_TEST_CASES: tuple[dict[str, str], ...] = (
-    {'id': 'TC-APPROVAL-001-01', 'priority': 'P0', 'layer': 'unit', 'title': '4gate', 'given': '4承認がすべてcurrent hashでapproved', 'when': 'assert_gateを行う', 'then': '該当後工程を許可する', 'test_file': '`tests/test_approval_workflow.py`'},
-    {'id': 'TC-APPROVAL-001-02', 'priority': 'P0', 'layer': 'unit', 'title': '変更による無効化', 'given': 'approved対象のhashを変更', 'when': 'invalidateを行う', 'then': '関連承認だけinvalidatedにする', 'test_file': '`tests/test_approval_invalidation.py`'},
-    {'id': 'TC-APPROVAL-001-03', 'priority': 'P0', 'layer': 'unit', 'title': '差し戻し理由', 'given': '理由空でrequest_changes', 'when': '実行する', 'then': '拒否し状態を変えない', 'test_file': '`tests/test_approval_workflow.py`'},
-    {'id': 'TC-APPROVAL-001-04', 'priority': 'P1', 'layer': 'unit', 'title': 'approvals.yaml load/save', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ApprovalBundle/ApprovalRecord/ChangeRequest`を通じて「approvals.yaml load/save」を実行する', 'then': '必要な承認が揃う場合だけ後工程へ進み、未承認・invalidated・changes_requestedでは安定errorで停止する。', 'test_file': '`tests/test_approval_invalidation.py`'},
-    {'id': 'TC-APPROVAL-001-05', 'priority': 'P1', 'layer': 'unit', 'title': 'bundle hash', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ApprovalBundle/ApprovalRecord/ChangeRequest`を通じて「bundle hash」を実行する', 'then': '同一の正規化入力から同一SHA-256を返し、内容差分があればhashが変化する。', 'test_file': '`tests/test_approval_workflow.py`'},
-    {'id': 'TC-APPROVAL-001-06', 'priority': 'P1', 'layer': 'unit', 'title': '合法な状態遷移', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ApprovalBundle/ApprovalRecord/ChangeRequest`を通じて「合法な状態遷移」を実行する', 'then': '承認済み状態遷移表にある遷移だけが成功し、不正遷移では永続状態を変更しない。', 'test_file': '`tests/test_approval_invalidation.py`'},
-    {'id': 'TC-APPROVAL-001-07', 'priority': 'P1', 'layer': 'unit', 'title': 'change request', 'given': '承認済み仕様に適合する最小入力と、必要な依存をmockした状態', 'when': '`ApprovalBundle/ApprovalRecord/ChangeRequest`を通じて「change request」を実行する', 'then': '「change request」の承認済み仕様を満たし、戻り値・永続化・eventが再実行可能かつ決定的である。', 'test_file': '`tests/test_approval_workflow.py`'},
-    {'id': 'TC-APPROVAL-001-08', 'priority': 'P0', 'layer': 'unit', 'title': '必須入力欠落', 'given': '主ID、必須path、必須設定のいずれかが欠落した入力', 'when': '`ApprovalBundle/ApprovalRecord/ChangeRequest`を実行する', 'then': '副作用を開始する前に安定したvalidation errorを返し、既存ファイル・DB・成果物を変更しない。', 'test_file': '`tests/test_approval_invalidation.py`'},
-    {'id': 'TC-APPROVAL-001-09', 'priority': 'P1', 'layer': 'unit', 'title': '再実行時の決定性', 'given': '同じ入力、同じ設定、同じ依存応答', 'when': '`ApprovalBundle/ApprovalRecord/ChangeRequest`を2回実行する', 'then': '仕様上追記が必要なversion以外は同じ論理結果を返し、重複外部呼出し・重複正式成果物を発生させない。', 'test_file': '`tests/test_approval_workflow.py`'},
-    {'id': 'TC-APPROVAL-001-10', 'priority': 'P0', 'layer': 'unit', 'title': '入力・既存成果物の不変性', 'given': 'hash取得済みの入力と既存正常成果物', 'when': '正常処理または意図的な失敗を発生させる', 'then': '入力と既存正常成果物のbyte/hashが変化せず、派生物・一時物・新versionだけが変更対象になる。', 'test_file': '`tests/test_approval_invalidation.py`'},
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+from script.core.errors import AppError, ErrorCode
+from script.core.serialization import dump_yaml, load_yaml
+from script.persistence.paths import ProjectPaths
+from script.schemas.approvals import (
+    ApprovalBundle,
+    ApprovalGate,
+    ApprovalRecord,
+    ApprovalStatus,
+    ApprovalTarget,
+    can_transition_approval,
 )
 
-def _step4_unimplemented(symbol: str) -> None:
-    raise NotImplementedError(f"STEP4 source scaffold is not implemented: {symbol} (script/services/approvals.py)")
+_APPROVALS_RELATIVE_PATH = "approvals.yaml"
+
+# docs/specifications/07-approval-workflow.md 10節 変更種別ごとの無効化対象gate
+_INVALIDATION_TABLE: dict[str, tuple[ApprovalGate, ...]] = {
+    "materials_list_changed": (
+        ApprovalGate.MATERIALS_CURRICULUM,
+        ApprovalGate.PLANNING,
+        ApprovalGate.VERIFIED_SCRIPT,
+        ApprovalGate.PREVIEW_AUDIO,
+    ),
+    "project_plan_changed": (
+        ApprovalGate.PLANNING,
+        ApprovalGate.VERIFIED_SCRIPT,
+        ApprovalGate.PREVIEW_AUDIO,
+    ),
+    "chapter_spec_changed": (ApprovalGate.VERIFIED_SCRIPT, ApprovalGate.PREVIEW_AUDIO),
+    "script_text_changed": (ApprovalGate.VERIFIED_SCRIPT, ApprovalGate.PREVIEW_AUDIO),
+    "tts_text_changed": (ApprovalGate.PREVIEW_AUDIO,),
+    "voice_profile_changed": (ApprovalGate.PREVIEW_AUDIO,),
+    "character_profile_changed": (ApprovalGate.VERIFIED_SCRIPT, ApprovalGate.PREVIEW_AUDIO),
+    "tts_engine_version_changed": (ApprovalGate.PREVIEW_AUDIO,),
+    "mp3_tag_only_changed": (),
+}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
 
 class ApprovalService:
-    """Public service/adapter scaffold fixed by STEP2."""
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._args = args
-        self._kwargs = kwargs
-    def submit(self) -> Any:
-        """合法な承認遷移と理由必須の差し戻しを行う。
+    """4承認地点の遷移・差し戻し・hash変更による無効化を管理する。"""
 
-        Public contract: ``ApprovalService.submit/approve/request_changes``.
-        """
-        _step4_unimplemented('ApprovalService.submit')
-    def approve(self) -> Any:
-        """合法な承認遷移と理由必須の差し戻しを行う。
+    def __init__(self, data_root: Path) -> None:
+        if not data_root:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "data_root is required")
+        self._data_root = Path(data_root)
 
-        Public contract: ``ApprovalService.submit/approve/request_changes``.
-        """
-        _step4_unimplemented('ApprovalService.approve')
-    def request_changes(self) -> Any:
-        """合法な承認遷移と理由必須の差し戻しを行う。
+    def _approvals_path(self, project_id: str) -> Path:
+        paths = ProjectPaths.for_root(self._data_root, project_id)
+        return paths.resolve_relative(_APPROVALS_RELATIVE_PATH)
 
-        Public contract: ``ApprovalService.submit/approve/request_changes``.
-        """
-        _step4_unimplemented('ApprovalService.request_changes')
-    def invalidate_changed_targets(self, *args: Any, **kwargs: Any) -> list[str]:
-        """hash/revision変更の影響を受ける承認だけinvalidatedにする。
+    def _load_bundle(self, project_id: str) -> ApprovalBundle:
+        path = self._approvals_path(project_id)
+        if not path.exists():
+            return ApprovalBundle.empty(project_id)
+        data = load_yaml(path)
+        return ApprovalBundle.from_mapping(data)
 
-        Public contract: ``ApprovalService.invalidate_changed_targets(...) -> list[str]``.
-        """
-        _step4_unimplemented('ApprovalService.invalidate_changed_targets')
-    def assert_gate(self, project_id: Any, gate: Any) -> None:
-        """未承認gateは安定error codeで停止する。
+    def _save_bundle(self, bundle: ApprovalBundle) -> None:
+        path = self._approvals_path(bundle.project_id)
+        dump_yaml(path, bundle.to_mapping())
 
-        Public contract: ``ApprovalService.assert_gate(project_id, gate) -> None``.
-        """
-        _step4_unimplemented('ApprovalService.assert_gate')
+    def _require_gate(self, gate) -> ApprovalGate:
+        if isinstance(gate, ApprovalGate):
+            return gate
+        try:
+            return ApprovalGate(gate)
+        except ValueError as exc:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"unknown approval gate: {gate!r}") from exc
+
+    def _transition(self, project_id: str, gate, target_status: ApprovalStatus, **updates) -> ApprovalRecord:
+        if not project_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id is required")
+        gate = self._require_gate(gate)
+        bundle = self._load_bundle(project_id)
+        current = bundle.approvals[gate]
+
+        if not can_transition_approval(current.status, target_status):
+            raise AppError(
+                ErrorCode.CONFLICT,
+                f"illegal approval transition for gate {gate.value}: {current.status.value} -> {target_status.value}",
+            )
+
+        fields = {
+            "approval_id": current.approval_id,
+            "gate": gate,
+            "status": target_status,
+            "target": current.target,
+            "approved_by": current.approved_by,
+            "approved_at": current.approved_at,
+            "comment": current.comment,
+        }
+        fields.update(updates)
+        updated_record = ApprovalRecord(**fields)
+
+        updated_bundle = bundle.with_record(gate, updated_record)
+        self._save_bundle(updated_bundle)
+        return updated_record
+
+    def submit(self, project_id: str, gate, *, target: ApprovalTarget) -> ApprovalRecord:
+        """draft/revisedからreview_pendingへ提出する。"""
+        if target is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "target is required to submit for review")
+        return self._transition(project_id, gate, ApprovalStatus.REVIEW_PENDING, target=target, comment=None)
+
+    def approve(self, project_id: str, gate, *, approved_by: str) -> ApprovalRecord:
+        """review_pendingからapprovedへ承認する。"""
+        if not approved_by:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "approved_by is required")
+        return self._transition(
+            project_id,
+            gate,
+            ApprovalStatus.APPROVED,
+            approved_by=approved_by,
+            approved_at=_now_iso(),
+        )
+
+    def request_changes(self, project_id: str, gate, *, reason: str) -> ApprovalRecord:
+        """review_pendingからchanges_requestedへ差し戻す(理由必須)。"""
+        if not reason or not reason.strip():
+            raise AppError(ErrorCode.VALIDATION_ERROR, "reason is required to request changes")
+        return self._transition(project_id, gate, ApprovalStatus.CHANGES_REQUESTED, comment=reason)
+
+    def mark_revised(self, project_id: str, gate) -> ApprovalRecord:
+        """changes_requestedからrevisedへ進める。"""
+        return self._transition(project_id, gate, ApprovalStatus.REVISED)
+
+    def resubmit(self, project_id: str, gate, *, target: ApprovalTarget) -> ApprovalRecord:
+        """revisedからreview_pendingへ再提出する。"""
+        if target is None:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "target is required to resubmit for review")
+        return self._transition(project_id, gate, ApprovalStatus.REVIEW_PENDING, target=target, comment=None)
+
+    def reject(self, project_id: str, gate, *, reason: str) -> ApprovalRecord:
+        """review_pendingからrejectedへ却下する。"""
+        if not reason or not reason.strip():
+            raise AppError(ErrorCode.VALIDATION_ERROR, "reason is required to reject")
+        return self._transition(project_id, gate, ApprovalStatus.REJECTED, comment=reason)
+
+    def invalidate_changed_targets(self, project_id: str, change_type: str) -> list[str]:
+        """変更種別に応じて、approved状態のgateのみをinvalidatedへ遷移させ、無効化したgate名を返す。"""
+        if not project_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id is required")
+        if change_type not in _INVALIDATION_TABLE:
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"unknown change_type: {change_type!r}")
+
+        bundle = self._load_bundle(project_id)
+        invalidated: list[str] = []
+        for gate in _INVALIDATION_TABLE[change_type]:
+            record = bundle.approvals[gate]
+            if record.status is not ApprovalStatus.APPROVED:
+                continue
+            updated_record = ApprovalRecord(
+                approval_id=record.approval_id,
+                gate=gate,
+                status=ApprovalStatus.INVALIDATED,
+                target=record.target,
+                approved_by=record.approved_by,
+                approved_at=record.approved_at,
+                comment=f"invalidated by change_type={change_type}",
+            )
+            bundle = bundle.with_record(gate, updated_record)
+            invalidated.append(gate.value)
+
+        if invalidated:
+            self._save_bundle(bundle)
+        return invalidated
+
+    def assert_gate(self, project_id: str, gate) -> None:
+        """指定gateがapproved状態でなければ、安定したerror codeで停止する。"""
+        if not project_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id is required")
+        gate = self._require_gate(gate)
+        bundle = self._load_bundle(project_id)
+        record = bundle.approvals[gate]
+        if record.status is not ApprovalStatus.APPROVED:
+            raise AppError(
+                ErrorCode.PERMISSION_DENIED,
+                f"gate {gate.value} is not approved (current status: {record.status.value})",
+            )
+
+    def get_bundle(self, project_id: str) -> ApprovalBundle:
+        """現在のapprovals.yaml内容を返す(存在しなければ全gate draftの初期値)。"""
+        return self._load_bundle(project_id)
