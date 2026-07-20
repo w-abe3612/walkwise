@@ -64,6 +64,24 @@ describe("TASK-DESKTOP-001 Electron/Vue scaffold・main/preload安全境界", ()
     expect(invoke).toHaveBeenCalledWith("project:get", "proj-1");
   });
 
+  test("TC-REVIEW-001-07: job progress channel一致 [unit/P0]", () => {
+    // TASK-REVIEW-001監査: mainは"job:progress-event"へsendするが(electron/main/ipc/jobs.ts)、
+    // 以前のpreloadは"job:subscribe-progress"を購読しており進捗がrendererへ届かなかった。
+    const on = vi.fn();
+    const removeListener = vi.fn();
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    const api = buildWalkwiseApi({ invoke, on, removeListener });
+
+    const listener = vi.fn();
+    const unsubscribe = api.job.subscribeProgress("job-1", listener);
+
+    expect(on).toHaveBeenCalledWith("job:progress-event", expect.any(Function));
+    expect(invoke).toHaveBeenCalledWith("job:subscribe-progress", "job-1");
+
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledWith("job:progress-event", expect.any(Function));
+  });
+
   test("TC-DESKTOP-001-08: 必須入力欠落 [unit/P0]", () => {
     expect(() => buildWalkwiseApi(null)).toThrow();
     expect(() => buildWalkwiseApi(undefined)).toThrow();

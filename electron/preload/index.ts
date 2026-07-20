@@ -13,18 +13,23 @@ export const ALLOWED_CHANNELS = [
   "project:create",
   "project:get",
   "source:register",
+  "source:list",
+  "source:retry",
   "approval:list",
   "approval:approve",
   "approval:request-changes",
   "build-request:create",
   "job:start",
+  "job:list",
   "job:get",
   "job:subscribe-progress",
+  "job:progress-event",
   "job:cancel",
   "artifact:list",
   "artifact:open-folder",
   "voice:list-engines",
   "voice:preview",
+  "dialog:select-source-file",
 ] as const;
 
 export type AllowedChannel = (typeof ALLOWED_CHANNELS)[number];
@@ -47,6 +52,8 @@ export interface WalkwiseApi {
   };
   readonly source: {
     register(input: unknown): Promise<unknown>;
+    list(projectId: string): Promise<unknown>;
+    retry(sourceId: string): Promise<unknown>;
   };
   readonly approval: {
     list(projectId: string): Promise<unknown>;
@@ -58,6 +65,7 @@ export interface WalkwiseApi {
   };
   readonly job: {
     start(input: unknown): Promise<unknown>;
+    list(projectId: string): Promise<unknown>;
     get(jobId: string): Promise<unknown>;
     subscribeProgress(jobId: string, listener: (event: unknown) => void): () => void;
     cancel(jobId: string): Promise<unknown>;
@@ -69,6 +77,12 @@ export interface WalkwiseApi {
   readonly voice: {
     listEngines(): Promise<unknown>;
     preview(input: unknown): Promise<unknown>;
+  };
+  readonly dialog: {
+    /** main process側の`dialog.showOpenDialog()`を呼び出し、検証済みの絶対pathと推定
+     * media typeを返す(利用者がdialogを閉じた場合はnull)。rendererは任意path文字列を
+     * 一切組み立てられない(TASK-REVIEW-001 2.6節)。 */
+    selectSourceFile(): Promise<unknown>;
   };
 }
 
@@ -91,6 +105,8 @@ export function buildWalkwiseApi(ipc: IpcRendererLike | null | undefined): Walkw
     },
     source: {
       register: (input: unknown) => rendererIpc.invoke("source:register", input),
+      list: (projectId: string) => rendererIpc.invoke("source:list", projectId),
+      retry: (sourceId: string) => rendererIpc.invoke("source:retry", sourceId),
     },
     approval: {
       list: (projectId: string) => rendererIpc.invoke("approval:list", projectId),
@@ -102,12 +118,15 @@ export function buildWalkwiseApi(ipc: IpcRendererLike | null | undefined): Walkw
     },
     job: {
       start: (input: unknown) => rendererIpc.invoke("job:start", input),
+      list: (projectId: string) => rendererIpc.invoke("job:list", projectId),
       get: (jobId: string) => rendererIpc.invoke("job:get", jobId),
       subscribeProgress: (jobId: string, listener: (event: unknown) => void) => {
+        // main側は"job:subscribe-progress"のinvokeで購読登録を受け付け、進捗自体は
+        // 別channel"job:progress-event"へ都度sendする(electron/main/ipc/jobs.ts参照)。
         const wrapped = (...args: readonly unknown[]) => listener(args[0]);
-        rendererIpc.on("job:subscribe-progress", wrapped);
+        rendererIpc.on("job:progress-event", wrapped);
         void rendererIpc.invoke("job:subscribe-progress", jobId);
-        return () => rendererIpc.removeListener("job:subscribe-progress", wrapped);
+        return () => rendererIpc.removeListener("job:progress-event", wrapped);
       },
       cancel: (jobId: string) => rendererIpc.invoke("job:cancel", jobId),
     },
@@ -118,6 +137,9 @@ export function buildWalkwiseApi(ipc: IpcRendererLike | null | undefined): Walkw
     voice: {
       listEngines: () => rendererIpc.invoke("voice:list-engines"),
       preview: (input: unknown) => rendererIpc.invoke("voice:preview", input),
+    },
+    dialog: {
+      selectSourceFile: () => rendererIpc.invoke("dialog:select-source-file"),
     },
   };
 }

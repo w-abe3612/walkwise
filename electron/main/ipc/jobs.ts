@@ -34,6 +34,7 @@ export interface ProgressEvent {
 }
 
 export interface JobServiceLike {
+  list(projectId: string): Promise<readonly JobSummary[]>;
   get(jobId: string): Promise<JobSummary>;
   subscribeProgress(jobId: string, listener: (event: ProgressEvent) => void): () => void;
   cancel(jobId: string): Promise<JobSummary>;
@@ -88,6 +89,14 @@ export function registerJobIpcHandlers(context: JobIpcContext): void {
   if (!context.jobService) {
     throw new Error("jobService is required");
   }
+
+  context.ipcMain.handle("job:list", async (_event, rawProjectId: unknown) => {
+    if (typeof rawProjectId !== "string" || !rawProjectId.trim()) {
+      throw new JobValidationError("validation_error", "projectId is required");
+    }
+    const jobs = await context.jobService.list(rawProjectId.trim());
+    return { jobs };
+  });
 
   context.ipcMain.handle("job:get", async (_event, rawJobId: unknown) => {
     const jobId = requireJobId(rawJobId);

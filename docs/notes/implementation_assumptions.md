@@ -1943,3 +1943,109 @@ last_updated: "2026-07-19"
   コード変更で誤って`"fail"`を設定してしまうリグレッションを防いだ。
 - 置き換え条件: 5.5節の`auto_fail_policy.allowed`が`true`へ改訂
   された場合(現時点で想定されていない)、許可する値集合を見直す。
+
+## TASK-REVIEW-001: 実行時統合における設計判断
+
+- 対象: `electron/main/worker_service_adapters.ts`、
+  `script/worker/commands.py`
+- 仮定: Electronの各`*ServiceLike`(Project/Source/Approval/Build/Job/
+  Artifact/Voice)は、すべてPython Worker subprocess経由(WorkerManager.
+  request())で実装し、Node側にSQLite driver(better-sqlite3等)を
+  一切追加しない設計とした。
+- 根拠: `docs/specifications/21-electron-python-worker-interface.md`
+  5.2節の記述は「Electron mainがrequestを一時ファイル/stdinで
+  Python CLIへ渡す」という形をJob実行の文脈で説明しているが、この
+  protocol自体(JSON Lines request/response)を、Job実行以外の
+  CRUD的操作(Project一覧取得等)にも一律で使うことを妨げる記述はない。
+  対案(Node側に直接SQLite driverを追加し、`script/services/*`の
+  業務ロジックをTypeScriptへ再実装する)は、(a)同じ業務ルールを
+  2言語で二重実装することになり将来的な乖離リスクが高く、(b)
+  better-sqlite3のようなnative moduleはElectron ABIとのversion
+  一致が必要でpackaging時の脆弱性になりやすく、(c)本reviewの
+  「既存の承認済みserviceを再利用する」という基本方針とも整合しない。
+  そのためWorker常駐subprocess1本への集約を選んだ。
+- 置き換え条件: 将来、Project一覧等の高頻度読み出しでWorker往復の
+  遅延が問題になった場合、読み取り専用パスに限定してNode側キャッシュ層を
+  追加することを検討する(書き込みパスの正本はPython側のまま変更しない)。
+
+- 対象: `script/worker/handlers.py`(`HandlerRegistry.dispatch`)
+- 仮定: handlerがPython generatorの`return`文で値を返した場合、
+  その値を`completed`eventの`result`欄へ付与するよう拡張した。
+  handlerが値を返さない(または`list`を返す、既存の全handler)場合は
+  従来どおり`result`欄なしの`completed`eventのまま。
+- 根拠: TASK-WORKER-001の既存契約(`docs/test-cases/
+  TASK-WORKER-001-python-worker-request-and-event-protocol.md`)は
+  `started`→`progress`→`artifact`→`completed`のevent列挙のみを定義し、
+  `completed`eventの追加fieldを禁止していない。CRUD系job_type
+  (`project.create`等)がElectron main側へ結果を返すには何らかの
+  経路が必要で、`WorkerEvent`の型自体(`event`ごとの検証はartifactの
+  pathのみ)を変更せずに実現できるこの方式を選んだ。既存test
+  (`tests/test_worker_dispatch.py`)は非generator/値なしhandlerのみを
+  使っており、後方互換であることを確認済み。
+- 置き換え条件: 将来、`completed`eventのpayload形式自体を21節の
+  正式改訂で定義する場合、この`result`fieldの名前・形式をそれに
+  合わせて変更する。
+
+- 対象: `electron/main/worker_service_adapters.ts`
+  (`createJobServiceAdapter`の`subscribeProgress`)
+- 仮定: 真のpush型progress配信の代わりに、`job:get`を500ms間隔で
+  pollingしてProgressEventへ変換する暫定実装とした。
+- 根拠: Python Worker側にはまだ実際のbuild pipeline実行ループ
+  (章単位でAI原稿生成→TTS→M4Bを実行し、都度progress eventをemitする
+  1つの長時間job)が接続されておらず、`job.start`はJobの
+  queued/running状態遷移のみを行う。真のpush型progressを実装するには、
+  Worker側の実行ループ自体を新設する必要があり、これは既存の
+  各pipeline module(素材処理・原稿生成・TTS・音声パッケージング)を
+  1つの`job.start`から呼び出す統合作業であって、本review(実行時
+  統合の配線)の範囲外と判断した。
+- 置き換え条件: 実際のbuild pipeline統合(別task)が完了し、Worker側が
+  `progress`eventを実際にemitするようになった時点で、pollingを
+  WorkerManagerの`progress`event中継(`event.sender.send`相当の
+  push配信)へ置き換える。
+
+- 対象: `electron/main/ipc/files.ts`、`ProjectWorkspace.vue`
+- 仮定: file選択は`dialog.showOpenDialog()`(main process)経由のみを
+  許可し、rendererは任意path文字列を一切組み立てられない設計とした。
+  加えて`script/schemas/source_metadata.py`(`SourceMetadata.from_file`)
+  側にもsymlink拒否を追加した(Electron層の検証を経由しない呼び出しに
+  対する多重防御)。
+- 根拠: ブラウザの`File`オブジェクトは`file.name`(拡張子付きファイル名)
+  以外に実在するファイルシステムpathを一切持たない(セキュリティ上の
+  設計、Web標準の仕様)。以前の実装はこの`file.name`を実pathであるかの
+  ように送っており、main/Workerは対象fileを一度も実際に読めていなかった
+  (機能しない、というだけでなく、将来同名の別fileを誤って参照する
+  potentialなbugでもあった)。dialog経由に変更することで、main process
+  が実際に選ばれた絶対pathを検証してから使う設計に変えた。
+- 置き換え条件: 将来drag&dropを再度サポートする場合、Electronの
+  `webUtils.getPathForFile()`(Electron 32+で実pathを取得できるAPI)を
+  使い、同じ`validateSourceFilePath()`検証を経由させることを検討する。
+
+- 対象: `tsconfig.main.json`、`scripts/finalize-dist.mjs`
+- 仮定: `electron/main`・`electron/preload`はCommonJS(`module: CommonJS`、
+  拡張子なし相対import)へcompileし、root `package.json`の
+  `"type":"module"`とは独立させるため、`dist/main/package.json`・
+  `dist/preload/package.json`へ`{"type":"commonjs"}`を書き込む
+  (Node解決規則: 最も近いpackage.jsonの`type`が優先される)。
+- 根拠: 既存の`electron/main`・`electron/preload`のTypeScriptは
+  拡張子なしの相対import(`from "./jobs"`等)で書かれており、これは
+  Node ESM(`NodeNext`解決)ではなくCommonJS/classic解決の書式である。
+  全fileへ`.js`拡張子を追加してESM化する変更は、本review対象外の
+  広範囲な書き換えになるため避けた。CommonJS化+dist側package.jsonの
+  type上書きは、root自体をESMのまま保てる標準的な回避策である。
+- 置き換え条件: 将来、main/preload配下のimportをすべて拡張子付きへ
+  統一するタイミングで、`tsconfig.main.json`を`module: NodeNext`へ
+  切り替え、`scripts/finalize-dist.mjs`のtype上書きを削除する。
+
+- 対象: `script/ai_clients/gemini/mindmap_builder.py`、
+  `merged_text_fixer.py`(削除)
+- 仮定: 全body`NotImplementedError`のlegacy互換scaffoldであり、
+  どのtask・test・pipelineからも参照されていないことを確認した上で、
+  実装を追加せず削除・deprecateした。
+- 根拠: これらの関数(`build_final_mindmap`/`load_sections`/
+  `process_section`/`fix_text_file_with_gemini`)を実装する仕様・
+  test caseが存在せず、実装すれば推測実装になる。`TASK-COEIR-001`のような
+  「外部条件待ちのため永久blocked」とは異なり、これらは単に
+  「参照元がない」ため、実装保留ではなく削除が適切と判断した。
+- 置き換え条件: 将来これらの機能(mindmap構築、テキスト整形)が
+  実際に必要になった場合、`script/ai_clients/gemini/client.py`の
+  `GeminiClient`契約へ新規taskとして追加する。

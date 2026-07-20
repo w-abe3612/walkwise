@@ -99,6 +99,10 @@ onMounted(() => {
   void loadProjects();
 });
 
+/** TASK-REVIEW-001: Project選択後にworkspace画面へ遷移するための橋渡し(呼び出し側がAppの
+ * navigationへ結線する)。 */
+const emit = defineEmits<{ (event: "open-project", projectId: string): void }>();
+
 defineExpose({ loadProjects, submitCreate, isFormValid });
 </script>
 
@@ -122,6 +126,9 @@ defineExpose({ loadProjects, submitCreate, isFormValid });
         <span>{{ project.title }}</span>
         <span>{{ project.planningStage }}</span>
         <span>{{ project.updatedAt }}</span>
+        <button type="button" data-testid="open-project-button" @click="emit('open-project', project.projectId)">
+          開く
+        </button>
       </li>
     </ul>
 

@@ -52,6 +52,7 @@ describe("TASK-UI-004 Job進捗・cancel/retry・成果物画面", () => {
   test("TC-UI-004-04: job:get/subscribe/cancel/start retry [unit/P1]", async () => {
     const { ipcMain, handlers } = fakeIpcMain<JobIpcMainLike>();
     const jobService: JobServiceLike = {
+      list: vi.fn().mockResolvedValue([]),
       get: vi.fn().mockResolvedValue({ jobId: "job-1", buildRequestId: "br-1", jobType: "t", status: "running" }),
       subscribeProgress: vi.fn().mockReturnValue(() => {}),
       cancel: vi.fn(),

@@ -56,6 +56,9 @@ class SourceMetadata:
             )
 
         source_path = Path(source_path)
+        if source_path.is_symlink():
+            # TASK-REVIEW-001 2.6節: symlink経由でproject外のfileを読み出すことを防ぐ。
+            raise AppError(ErrorCode.VALIDATION_ERROR, f"symbolic links are not allowed as source files: {source_path}")
         if not source_path.is_file():
             raise AppError(ErrorCode.NOT_FOUND, f"source file does not exist: {source_path}")
 

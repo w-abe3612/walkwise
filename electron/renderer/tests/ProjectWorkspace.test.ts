@@ -36,6 +36,7 @@ describe("TASK-UI-002 Project workspace・Source登録/レビュー・承認UI",
         retrySource: vi.fn(),
         approve: vi.fn(),
         requestChanges,
+        selectSourceFile: vi.fn(),
       },
     });
 
@@ -51,8 +52,12 @@ describe("TASK-UI-002 Project workspace・Source登録/レビュー・承認UI",
     expect(requestChanges).toHaveBeenCalledWith("materials_curriculum", "要出典追加");
   });
 
-  test("TC-UI-002-04: file dialog/drop [integration_mock/P1]", async () => {
+  test("TC-UI-002-04: 安全なfile dialog選択 [integration_mock/P1]", async () => {
+    // TASK-REVIEW-001 2.6節: file選択はmain process側のdialog.showOpenDialog()経由でのみ行い、
+    // rendererはbrowser File.name等の任意path文字列を一切組み立てない。main側が検証済みの
+    // 絶対pathを返した場合にのみregisterSourceが呼ばれる。
     const registerSource = vi.fn().mockResolvedValue(undefined);
+    const selectSourceFile = vi.fn().mockResolvedValue({ filePath: "C:\\Users\\reader\\Documents\\chapter01.pdf", mediaType: "pdf" });
     const wrapper = mount(ProjectWorkspace, {
       props: {
         sources: [],
@@ -61,17 +66,41 @@ describe("TASK-UI-002 Project workspace・Source登録/レビュー・承認UI",
         retrySource: vi.fn(),
         approve: vi.fn(),
         requestChanges: vi.fn(),
+        selectSourceFile,
       },
     });
 
-    await wrapper.get('[data-testid="media-type-select"]').setValue("pdf");
+    await wrapper.get('[data-testid="select-file-button"]').trigger("click");
+    await wrapper.vm.$nextTick();
 
-    const file = new File(["dummy"], "chapter01.pdf", { type: "application/pdf" });
-    const dataTransfer = { files: [file] } as unknown as DataTransfer;
-    await wrapper.get('[data-testid="drop-zone"]').trigger("drop", { dataTransfer });
-
+    expect(selectSourceFile).toHaveBeenCalledTimes(1);
     expect(registerSource).toHaveBeenCalledTimes(1);
-    expect(registerSource).toHaveBeenCalledWith({ filePath: "chapter01.pdf", mediaType: "pdf" });
+    expect(registerSource).toHaveBeenCalledWith({
+      filePath: "C:\\Users\\reader\\Documents\\chapter01.pdf",
+      mediaType: "pdf",
+    });
+  });
+
+  test("TC-UI-002-04b: dialogがcancel(null)された場合はregisterSourceを呼ばない [unit/P1]", async () => {
+    const registerSource = vi.fn();
+    const selectSourceFile = vi.fn().mockResolvedValue(null);
+    const wrapper = mount(ProjectWorkspace, {
+      props: {
+        sources: [],
+        approvals: [],
+        registerSource,
+        retrySource: vi.fn(),
+        approve: vi.fn(),
+        requestChanges: vi.fn(),
+        selectSourceFile,
+      },
+    });
+
+    await wrapper.get('[data-testid="select-file-button"]').trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(selectSourceFile).toHaveBeenCalledTimes(1);
+    expect(registerSource).not.toHaveBeenCalled();
   });
 
   test("TC-UI-002-06: 再処理/修正/問題なし [unit/P1]", async () => {
@@ -83,6 +112,13 @@ describe("TASK-UI-002 Project workspace・Source登録/レビュー・承認UI",
         mediaType: input.mediaType,
         status: "registered",
       })),
+      list: vi.fn().mockResolvedValue([]),
+      retry: vi.fn().mockResolvedValue({
+        sourceId: "src-1",
+        projectId: "proj-1",
+        mediaType: "pdf",
+        status: "registered",
+      }),
     };
     registerSourceIpcHandlers({ ipcMain, sourceService });
     const registerHandler = handlers.get("source:register")!;

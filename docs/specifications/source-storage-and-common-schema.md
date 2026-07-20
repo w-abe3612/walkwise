@@ -20,15 +20,13 @@ spec_refs:
 # 資料保存構成と共通資料スキーマ
 
 > **依存関係の注記**
-> 本書は`docs/spec-proposals/task/2_file-persistence-operations.md`
-> (ファイル保存運用の詳細: atomic write、ファイルロック、バックアップ世代数)への
-> 依存を宣言しているが、同タスクは本書承認時点で未着手のまま残っている
-> (`docs/spec-proposals/task/INDEX.md`参照)。このため、ファイルロック・atomic write・
-> バックアップ世代数といった**書き込み手順の詳細**は本書の対象外・未決定事項として残し、
-> `17-local-data-persistence-policy.md`(承認済み・方針レベル)と
-> `01-common-identifiers-and-versioning.md`(承認済み・ID/ハッシュ規則)から
-> 導出できる範囲でのみ、資料保存構成とschemaを定義する。この未決定事項は
-> 本書の承認を妨げる必須条件ではなく、別の保存運用タスクで確定する。
+> 本書は旧`docs/spec-proposals/task/2_file-persistence-operations.md`
+> (ファイル保存運用の詳細: atomic write、ファイルロック、バックアップ世代数、
+> `TASK-REVIEW-001`で削除・完了・git履歴参照)への依存を宣言していたが、
+> 決定内容は`17-local-data-persistence-policy.md`(承認済み・方針レベル、
+> 5.4/5.5節に具体的な運用が記載されている)へ吸収済みである。
+> `01-common-identifiers-and-versioning.md`(承認済み・ID/ハッシュ規則)と
+> 合わせて、資料保存構成とschemaを定義する。
 
 ## 1. 目的
 

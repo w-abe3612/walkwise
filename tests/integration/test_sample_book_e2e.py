@@ -1,8 +1,7 @@
 """Test suite for TASK-E2E-001: サンプル1章fixture・仕様間受入検証.
 
 Contract: docs/test-cases/TASK-E2E-001-sample-book-fixtures-and-acceptance.md
-Spec: docs/spec-proposals/task/1_sample-book-end-to-end-validation.md,
-      docs/specifications/audiobook-creation-pipeline.md
+Spec: docs/specifications/audiobook-creation-pipeline.md
 
 ``run_sample_book_acceptance`` is this task's public contract and is
 self-referential production: it lives in this test file, mirroring the

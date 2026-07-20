@@ -34,6 +34,7 @@ function fakeIpcMain<T extends { handle: unknown }>(): {
 
 function fakeJobService(overrides: Partial<JobServiceLike> = {}): JobServiceLike {
   return {
+    list: vi.fn().mockResolvedValue([]),
     get: vi.fn().mockResolvedValue({
       jobId: "job-1",
       buildRequestId: "br-1",

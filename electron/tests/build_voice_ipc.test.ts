@@ -11,6 +11,7 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, test, vi } from "vitest";
 
 import { registerVoiceIpcHandlers, type IpcMainLike, type VoiceServiceLike } from "../main/ipc/voice";
+import { registerBuildIpcHandlers, type BuildServiceLike } from "../main/ipc/builds";
 import BuildSettings from "../renderer/screens/BuildSettings.vue";
 
 function fakeIpcMain(): { ipcMain: IpcMainLike; handlers: Map<string, (...args: unknown[]) => unknown> } {
@@ -90,6 +91,24 @@ describe("TASK-UI-003 出力・声設定・試聴画面", () => {
     expect(wrapper.findAll('[data-testid="format-mp3"]')).toHaveLength(1);
     expect(wrapper.findAll('[data-testid="format-text"]')).toHaveLength(1);
     expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(2); // mp3/textのみ
+  });
+
+  test("TC-REVIEW-001-09: approvalGateChecker未注入はfail-closed(default-allowにならない) [unit/P0]", () => {
+    // TASK-REVIEW-001 禁止事項: 承認gateのcheckerが注入されていない場合、
+    // job:startをapproved扱いにしてはならない。buildServiceは正常に注入された状態でも、
+    // approvalGateCheckerだけが欠落していれば登録自体が失敗し、handlerは1つも登録されない
+    // (=job:startを一切呼び出せない、真にfail-closedな状態)。
+    const { ipcMain } = fakeIpcMain();
+    const buildService: BuildServiceLike = { createBuildRequest: vi.fn(), startJob: vi.fn() };
+
+    expect(() =>
+      registerBuildIpcHandlers({
+        ipcMain,
+        buildService,
+        approvalGateChecker: undefined as never,
+      }),
+    ).toThrow(/approvalGateChecker is required/);
+    expect(ipcMain.handle).not.toHaveBeenCalled();
   });
 
   test("TC-UI-003-09: 再実行時の決定性 [unit/P1]", async () => {

@@ -70,6 +70,13 @@ function buildFakeDesktopBackend() {
       }
       return project;
     },
+    get: async (projectId) => {
+      const project = projects.get(projectId);
+      if (!project) {
+        throw new Error(`project not found: ${projectId}`);
+      }
+      return project;
+    },
   };
 
   const sourceService: SourceServiceLike = {
@@ -78,6 +85,16 @@ function buildFakeDesktopBackend() {
       const source = { sourceId, projectId: input.projectId, mediaType: input.mediaType, status: "ready" };
       sources.set(sourceId, source);
       return source;
+    },
+    list: async (projectId) => [...sources.values()].filter((source) => source.projectId === projectId),
+    retry: async (sourceId) => {
+      const source = sources.get(sourceId);
+      if (!source) {
+        throw new Error(`source not found: ${sourceId}`);
+      }
+      const updated = { ...source, status: "registered" };
+      sources.set(sourceId, updated);
+      return updated;
     },
   };
 
@@ -140,6 +157,8 @@ function buildFakeDesktopBackend() {
   };
 
   const jobService: JobServiceLike = {
+    list: async (projectId) =>
+      [...jobs.values()].filter((job) => buildRequests.get(job.buildRequestId)?.projectId === projectId),
     get: async (jobId) => jobs.get(jobId)!,
     subscribeProgress: () => () => {},
     cancel: async (jobId) => {

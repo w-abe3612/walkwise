@@ -115,10 +115,11 @@ def test_tc_env_001_02() -> None:
     missing = required_patterns - ignore_lines
     assert not missing, f"missing .dockerignore entries: {missing}"
 
-    # Confirm the actual working tree contains at least one real secret-like
-    # file, and that it is genuinely covered by an ignore pattern (not just
-    # coincidentally absent from the tree).
-    assert (_REPO_ROOT / ".env").is_file()
+    # TASK-REVIEW-001 2.8節: 以前はここで実`.env`(gitignore対象、cloneに含まれない)の
+    # 存在を要求しており、清潔なcheckoutでは必ず失敗していた。`.env.example`は
+    # commit対象の正本であり、これが存在し".env"パターンでdocker build contextから
+    # 除外されることだけを確認する(実`.env`の有無には依存しない)。
+    assert (_REPO_ROOT / ".env.example").is_file()
     assert ".env" in ignore_lines
 
 

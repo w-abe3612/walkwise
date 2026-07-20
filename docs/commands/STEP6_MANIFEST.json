@@ -357,10 +357,26 @@
     "post_mvp_tasks_total": 3,
     "post_mvp_tasks_complete": 3,
     "post_mvp_tasks_remaining": [],
-    "blocked_tasks": ["TASK-COEIR-001"],
+    "blocked_tasks": [
+      "TASK-COEIR-001"
+    ],
     "overall_tasks_total": 54,
     "overall_tasks_complete": 53,
-    "overall_status": "all non-blocked tasks complete; only TASK-COEIR-001 remains, permanently blocked pending official COEIROINK API generation/endpoint/speaker-id/terms-of-use confirmation"
+    "overall_status": "all non-blocked tasks complete; only TASK-COEIR-001 remains, permanently blocked pending official COEIROINK API generation/endpoint/speaker-id/terms-of-use confirmation",
+    "runtime_integration_review": {
+      "reviewed_task": "TASK-REVIEW-001",
+      "composition_root_implemented": true,
+      "worker_command_registry_implemented": true,
+      "electron_worker_service_adapters_implemented": true,
+      "renderer_root_wired": true,
+      "safe_file_picker_implemented": true,
+      "build_pipeline_implemented": true,
+      "package_smoke_verified": true,
+      "worker_subprocess_smoke_verified": true,
+      "real_gui_launch_verified": false,
+      "real_gui_launch_reason": "no display available in this development environment",
+      "build_pipeline_execution_integration_status": "not connected: job.start manages queued/running state only; actual AI/TTS/M4B pipeline execution per job is not yet wired to a single Worker entrypoint"
+    }
   },
   "verification": {
     "python_syntax": "success",
@@ -397,7 +413,9 @@
     ],
     "vitest_infra_added": "@vue/test-utils, jsdom, @vitejs/plugin-vue devDependencies + new vitest.config.ts (TASK-UI-001, required for genuine Vue SFC DOM testing across all UI-* tasks)",
     "known_technical_debt": [],
-    "resolved_technical_debt": ["electron/main/ipc/builds.ts and jobs.ts both registered a \"job:start\" ipcMain.handle for different purposes (new job vs retry); discovered during TASK-DESKTOP-003 E2E integration; resolved in TASK-RELEASE-002 by making builds.ts the canonical handler accepting both a bare buildRequestId string and a {parentJobId} retry object (jobService is an optional BuildIpcContext field, backward compatible), and removing jobs.ts's job:start registration. TASK-UI-004's job_artifact_ipc.test.ts and JobsAndArtifacts.test.ts, and TASK-DESKTOP-003's mvp-flow.test.ts (TC-06) were updated to register both IPC modules on a single shared fake ipcMain and re-confirmed passing. Documented in implementation_assumptions.md."],
+    "resolved_technical_debt": [
+      "electron/main/ipc/builds.ts and jobs.ts both registered a \"job:start\" ipcMain.handle for different purposes (new job vs retry); discovered during TASK-DESKTOP-003 E2E integration; resolved in TASK-RELEASE-002 by making builds.ts the canonical handler accepting both a bare buildRequestId string and a {parentJobId} retry object (jobService is an optional BuildIpcContext field, backward compatible), and removing jobs.ts's job:start registration. TASK-UI-004's job_artifact_ipc.test.ts and JobsAndArtifacts.test.ts, and TASK-DESKTOP-003's mvp-flow.test.ts (TC-06) were updated to register both IPC modules on a single shared fake ipcMain and re-confirmed passing. Documented in implementation_assumptions.md."
+    ],
     "note": "ALL NON-BLOCKED TASKS COMPLETE (2026-07-20): 53/54 tasks done (MVP 50/50 + post-MVP 3/3); only TASK-COEIR-001 remains, permanently blocked. MVP close: TASK-MIGRATION-001 +10, TASK-E2E-001 +10, TASK-RELEASE-001 +6, TASK-RELEASE-002 +7 Python passed (MVP-close total: 394 passed/23 deselected/37 xfailed; Docker matched at 387+7=394). TASK-RELEASE-001 converted the remaining 4 Vitest test.fails placeholders to real assertions (73 real/0 placeholders, unchanged since). TASK-RELEASE-002 added no new production module; reused TASK-FILE-001/TASK-JOB-001/TASK-WORKER-002/TASK-SOURCE-002 code directly; its own 10 cases gated behind WALKWISE_RUN_PERFORMANCE/WALKWISE_RUN_RESILIENCE opt-in (3 of 10; the other 7 are 'unit' layer and ran in the normal filter). release/checklist.md separates MVP code-complete (yes) from release-ready (no, pending real-runtime confirmation). Post-MVP: TASK-EPUB-001 +10 (stdlib zipfile+xml.etree.ElementTree only, no new dependency). TASK-M4B-001 +7 (M4BTool.check_runtime reuses TASK-AUDIO-002's ffmpeg_cmd/runner DI pattern; TC-02/09/10 reuse ffmpeg_connectivity_gate, skip by default; validation_threshold_status hardcoded 'provisional' since the dependent spec is itself provisional; no full-book MP3 path implemented, out of scope). TASK-ASR-001 +10 (final task, host-measured final total: 421 passed/23 deselected/10 xfailed, all 10 remaining xfailed are TASK-COEIR-001; Docker matches at 414+7=421; LocalWhisperCompatibleClient reuses TASK-OCR-001's OcrClient-style command/runner DI pattern; ASRVerificationReport.status is type-restricted to pass/warning/review_required only, making 'fail' structurally impossible per spec 5.5/12; TC-11/12 reuse a new asr_connectivity_gate, skip by default, WALKWISE_ASR_ENABLED unset; no new dependency, stdlib subprocess/json/tempfile only). None of the 3 post-MVP tasks changed TypeScript/Vitest (73 passed/3 skipped throughout). Job:start IPC collision (discovered in TASK-DESKTOP-003, resolved in TASK-RELEASE-002) remains resolved. Remaining work: final repository-wide review and completion report; TASK-COEIR-001 stays permanently blocked pending official COEIROINK API generation/endpoint/speaker-id/terms-of-use confirmation."
   }
 }

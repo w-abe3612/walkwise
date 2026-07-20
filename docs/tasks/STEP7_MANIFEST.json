@@ -2361,5 +2361,6 @@
       "case_count": 10,
       "external_gate": false
     }
-  ]
+  ],
+  "task_review_001_note": "As of TASK-REVIEW-001 (2026-07-20), 53 of the 54 task_file paths listed below (all except TASK-COEIR-001) point to deleted docs/tasks/TASK-*.md files. This manifest is preserved as a historical record of the STEP7 planning state; it is not kept in sync with docs/tasks/ deletions. See docs/tasks/INDEX.md and docs/notes/progress.md for the current state."
 }

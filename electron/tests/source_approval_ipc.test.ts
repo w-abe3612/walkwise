@@ -35,6 +35,13 @@ function fakeSourceService(overrides: Partial<SourceServiceLike> = {}): SourceSe
       mediaType: input.mediaType,
       status: "registered",
     })),
+    list: vi.fn().mockResolvedValue([]),
+    retry: vi.fn().mockResolvedValue({
+      sourceId: "src-1",
+      projectId: "proj-1",
+      mediaType: "pdf",
+      status: "registered",
+    }),
     ...overrides,
   };
 }
@@ -57,6 +64,7 @@ describe("TASK-UI-002 Project workspace・Source登録/レビュー・承認UI",
         retrySource: vi.fn(),
         approve: vi.fn(),
         requestChanges: vi.fn(),
+        selectSourceFile: vi.fn(),
       },
     });
 
@@ -73,6 +81,8 @@ describe("TASK-UI-002 Project workspace・Source登録/レビュー・承認UI",
   });
 
   test("TC-UI-002-03: 対象外非表示 [unit/P0]", () => {
+    // TASK-REVIEW-001 2.6節でmedia typeの選択はfile選択dialog(main process側、
+    // electron/main/ipc/files.tsのfilter)へ移した。renderer側は対応形式の案内表示のみを持つ。
     const wrapper = mount(ProjectWorkspace, {
       props: {
         sources: [],
@@ -81,16 +91,16 @@ describe("TASK-UI-002 Project workspace・Source登録/レビュー・承認UI",
         retrySource: vi.fn(),
         approve: vi.fn(),
         requestChanges: vi.fn(),
+        selectSourceFile: vi.fn(),
       },
     });
 
-    const options = wrapper.findAll('[data-testid="media-type-select"] option').map((o) => o.attributes("value"));
-    expect(options).toEqual(["text", "pdf", "image"]);
-    expect(options).not.toContain("epub");
-    expect(options).not.toContain("kindle");
-    expect(options).not.toContain("video");
-    // disabledとしても表示しない(disabled optionが存在しないこと)
-    expect(wrapper.findAll('option[disabled]')).toHaveLength(0);
+    const vm = wrapper.vm as unknown as { ALLOWED_MEDIA_TYPES: readonly string[] };
+    expect(vm.ALLOWED_MEDIA_TYPES).toEqual(["text", "pdf", "image"]);
+    expect(vm.ALLOWED_MEDIA_TYPES).not.toContain("epub");
+    expect(vm.ALLOWED_MEDIA_TYPES).not.toContain("kindle");
+    expect(vm.ALLOWED_MEDIA_TYPES).not.toContain("video");
+    expect(wrapper.text()).not.toContain("epub");
   });
 
   test("TC-UI-002-05: 処理開始 [unit/P1]", async () => {

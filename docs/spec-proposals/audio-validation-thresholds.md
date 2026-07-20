@@ -8,7 +8,7 @@ generated_by:
   type: ai
   note: "旧仕様策定タスク(完了・削除済み)により生成。Git履歴を参照。"
 depends_on:
-  - task/3_voice-profile-default-values.md
+  - "task/3_voice-profile-default-values.md (TASK-REVIEW-001で削除。決定内容は../specifications/09-voice-profile-schema.mdへ吸収済み。git履歴参照)"
 spec_refs:
   - ../specifications/13-audio-validation.md
   - ../specifications/09-voice-profile-schema.md

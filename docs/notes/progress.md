@@ -2025,3 +2025,240 @@ Phase 3完了時点(`230 passed, 201 xfailed`、Docker
   「431 xfailed」はSTEP3空実装段階の開始時baselineとして意図的に
   固定された記述であり、実装完了を主張するものではないため変更して
   いない)。
+
+## TASK-REVIEW-001: 実行時統合とリポジトリ整理
+
+- 契機: 53/54タスク完了(post-MVP含む)後の再監査で、個別task契約が
+  mock/DI設計でpassしている状態と「実際に起動・操作できるアプリ」の間に
+  大きな乖離があることが判明した。具体的には、`electron/main/index.ts`が
+  `createMainWindow()`をexportするだけで`app.whenReady()`を呼ぶ経路が
+  存在しない、`python -m script.worker.cli`が空の`HandlerRegistry()`で
+  起動し`health`すら拒否する、Electronの各`*ServiceLike`にWorker/SQLite
+  接続の実装が1つもない、Rendererの5画面がどこにも結線されていない、
+  `job:progress-event`をpreloadが購読していない、`ProjectWorkspace.vue`が
+  ブラウザの`File.name`を実pathとして送っている、`npm run build`が
+  型検査のみで実HTML/JS/CSSを生成しない、という7点が確認された。
+- 対応方針: 個別taskの追加実装ではなく、既存の承認済みservice
+  (`script/services/*`)・既存のIPC contract(`electron/main/ipc/*.ts`)を
+  そのまま再利用し、それらを実際に結線する層(Worker command registry・
+  Electron⇔Worker adapter・composition root・Renderer root・安全な
+  file picker・実build pipeline)だけを新規実装した。新しい業務ロジックは
+  一切追加していない。
+- **Python Worker command registry**(`script/worker/commands.py`、新規):
+  `build_default_registry(data_root, connection)`が、`health`/`db.migrate`/
+  `job.recover_stale`/`project.*`/`source.*`/`approval.*`/
+  `build_request.*`/`job.*`/`artifact.*`/`voice.*`の20 job_typeを
+  既存serviceへ委譲するhandlerとして登録する。`script/worker/handlers.py`の
+  `HandlerRegistry.dispatch`を、handlerがgeneratorの`return`値を持つ場合に
+  `completed`eventの`result`欄へ付与するよう後方互換に拡張した(既存の
+  値なしhandlerは`result`なしの従来どおりの`completed`event)。
+  `script/worker/cli.py`の`__main__`entrypointは、`WALKWISE_DB_PATH`
+  環境変数が設定されている場合のみ実registryを使い、未設定時は従来どおり
+  空registry(安全側の既定、既存test非破壊)。`tests/test_worker_commands.py`
+  (新規8 case)で、health/migrate/project/source/approval/build/job(fail-closed
+  gate含む)/artifact/voiceの往復をRed(空registryで失敗確認)→Green
+  (実registryでpass)の順に確認。加えてshell上で実subprocess
+  (`echo '{"job_id":...}' | python -m script.worker.cli`)への
+  `health`/`db.migrate`/`project.create`往復を実測し、exit code 0を確認した。
+- **Electron⇔Worker service adapter**(`electron/main/worker_service_adapters.ts`、
+  新規): Project/Source/Approval/Build/Job/Artifact/Voice各`*ServiceLike`を
+  `WorkerManager.request()`経由のPython呼び出しへ委譲する実装。
+  camelCase(TS)⇔snake_case(Python)のfield変換のみを行い、DBスキーマ・
+  業務ルールはPython側にのみ存在させる設計とした。`JobServiceLike.
+  subscribeProgress`は、Worker側にまだ実際のbuild pipeline実行ループが
+  接続されていないため(job.startはqueued/running状態遷移のみ)、
+  `job:get`を500ms間隔でpollingしてProgressEventへ変換する暫定実装
+  とした(既知の制約、真のpush型progressではない)。
+  `ApprovalGateCheckerLike`は新設した`build_request.approval_gate_satisfied`
+  job_typeへ委譲し、rubber-stamp(常にtrueを返す)にしないよう設計した。
+  `tests/electron/tests/worker_service_adapters.test.ts`(新規8 case)で、
+  fake child processが返すJSON Linesを使った実WorkerManager往復を検証。
+- **Electron composition root**(`electron/main/app_entry.ts`、
+  `electron/main/electron_main.ts`、いずれも新規): `main()`が
+  `app.whenReady()`→`runCompositionRoot()`を呼び出す。`runCompositionRoot()`は
+  1つのWorkerManagerを構築し(spawn時に`WALKWISE_DB_PATH`環境変数を設定)、
+  `bootstrapApplication()`(既存契約、変更なし)の`openDatabase`/
+  `runMigrations`/`recoverStaleJobs`/`createWorkerManager`をすべて同じ
+  WorkerManager経由の`request()`へ委譲する形で結線し、その後7つの
+  adapterを構築してIPC handlerを単一`ipcMain`へ登録、最後に
+  `createMainWindow()`(既存契約、変更なし)を呼ぶ。`electron/main/index.ts`
+  自体は変更していない(既存testが`vi.mock("electron")`環境でimportしても
+  `app.whenReady()`が誤発火しないよう、実行処理を別fileへ分離)。
+  bootstrap後(IPC登録〜window作成)で例外が起きた場合に、bootstrap済みの
+  `context`を呼び出し側へ返せずWorker/DBがcleanupされずに残り続ける
+  資源leakを発見し(`context.shutdown()`を呼ばずに再送出していた)、
+  try/catchで`context.shutdown()`してから再送出するよう修正。
+  `electron/tests/app_entry.test.ts`(新規3 case)で、正常起動時の
+  channel重複なし登録、bootstrap失敗時のIPC/window未登録、window作成
+  失敗時のWorker cleanup(Red→Green確認済み)を検証。
+- **IPC channel不整合の修正**: `electron/preload/index.ts`の
+  `subscribeProgress`が、main側が実際にsendするchannel
+  (`job:progress-event`、`electron/main/ipc/jobs.ts`)ではなく
+  `job:subscribe-progress`(登録用channel名)を購読していた不具合を修正
+  (`electron/tests/preload_contract.test.ts`に専用test追加)。
+  `project:get`(preloadは呼ぶが`electron/main/ipc/projects.ts`に
+  handlerが存在しなかった)、`source:list`/`source:retry`
+  (`electron/main/ipc/sources.ts`)、`job:list`
+  (`electron/main/ipc/jobs.ts`、project配下のJob一覧を返す新規SQL join)を
+  追加。関連する既存test(`ProjectServiceLike`/`SourceServiceLike`/
+  `JobServiceLike`を実装するfake一式)を型エラーなく更新した。
+- **Renderer root**(`electron/renderer/App.vue`、新規): 以前
+  `electron/renderer/main.ts`は空のplaceholder divをmountするだけだった。
+  `router.ts`(`resolveNavigation`)・`stores/app.ts`(`AppStore`)・
+  5画面(ProjectList/ProjectWorkspace/BuildSettings/JobsAndArtifacts、
+  AppShell経由)・`window.walkwise`を実際に結線するroot componentを新規
+  実装し、`main.ts`の既定rootComponentを空placeholderからこれへ変更した。
+  `ProjectList.vue`に「開く」button(`open-project` emit)を追加し、
+  Project選択→workspace遷移の導線を新設(既存の一覧表示・作成form動作は
+  変更なし)。`electron/renderer/index.html`(Vite entry、新規)を追加。
+  `electron/renderer/tests/App.test.ts`(新規5 case)で、fake
+  `window.walkwise`に対する実DOM操作(button click)経由の
+  Project→Source/Approval読込→file選択→Build設定→Job/Artifact表示→
+  cancel、日本語errorメッセージ表示、を検証。
+- **安全なfile picker**(`electron/main/ipc/files.ts`、新規): 以前
+  `ProjectWorkspace.vue`は`<input type=file>`/drag&dropが返す
+  `File.name`(拡張子付きファイル名のみで実在するpathではない)を
+  そのまま`filePath`として送っており、main/Workerは対象fileを一度も
+  実際に読めなかった。`dialog:select-source-file` IPC channelを新設し、
+  main process側の`dialog.showOpenDialog()`のみでfile選択を行い、
+  拡張子allowlist・実在・通常ファイル(非ディレクトリ)・非symlink・
+  非UNC path・非path-traversalを検証してから絶対pathを返す設計へ変更した。
+  `ProjectWorkspace.vue`から`<input type=file>`/drop-zoneを削除し、
+  「ファイルを選択…」buttonから`selectSourceFile`prop経由でdialogを
+  呼ぶよう変更(既存test`TC-UI-002-04`を新しい安全な導線へ更新)。
+  加えて`script/schemas/source_metadata.py`の`SourceMetadata.from_file`へ
+  symlink拒否を追加した(Electron層のdialog検証を経由しない直接呼び出しに
+  対する多重防御、`tests/test_source_service.py`に専用testをRed→Green確認済みで追加)。
+  `electron/tests/files_ipc.test.ts`(新規11 case)で拡張子/実在/
+  ディレクトリ/symlink/UNC/traversal/相対pathの各拒否パターンを検証。
+- **実build pipeline**: 以前`npm run build`は`tsc --noEmit`(型検査のみ)で
+  実HTML/JS/CSSを一切生成しなかった。`vite.config.ts`(Renderer、
+  `electron/renderer/index.html`を入力に`dist/renderer/`へ出力)・
+  `tsconfig.main.json`(main/preloadをCommonJSへcompile、`dist/main/`・
+  `dist/preload/`へ出力)・`scripts/finalize-dist.mjs`(root
+  `package.json`の`"type":"module"`に関わらずdist側をCommonJSとして
+  実行させるため、`dist/main/package.json`・`dist/preload/package.json`へ
+  `{"type":"commonjs"}`を書き込む)を新規追加。`package.json`の`main`を
+  `dist/main/electron_main.js`へ設定し、`scripts`を
+  `dev`/`typecheck`/`build:main`/`build:renderer`/`build`/`test`/`start`/
+  `package`へ再構成した(`electron`パッケージが誤って`dependencies`に
+  入っていたためelectron-builderが拒否する設定不備も発見・
+  `devDependencies`へ修正)。`npm run build`実行で`dist/main/
+  electron_main.js`・`dist/preload/index.js`・`dist/renderer/index.html`の
+  生成を確認し、`npx electron-builder --dir`で`release/win-unpacked/
+  Walkwise.exe`を生成、`asar list`で`app.asar`内entrypointの存在を
+  確認、`Walkwise.exe --version`の実行(exit code 0)を確認した。
+- **fail-closed承認gateの確認**: `registerBuildIpcHandlers`
+  (`electron/main/ipc/builds.ts`)が`approvalGateChecker`未注入時に
+  登録自体を失敗させる実装は既存(Phase A)のままだったが、
+  `buildService`は注入されていて`approvalGateChecker`だけが欠落する
+  ケースを単独で検証するtestがなかったため、専用test
+  (`electron/tests/build_voice_ipc.test.ts`)を追加した。
+- **legacy scaffoldの整理**: `script/ai_clients/gemini/mindmap_builder.py`
+  (`build_final_mindmap`/`load_sections`/`process_section`/`Section`)と
+  `merged_text_fixer.py`(`fix_text_file_with_gemini`)は、全body
+  `NotImplementedError`のlegacy互換scaffoldで、どのtask・test・pipelineからも
+  参照されていないことを確認した(直接import・test参照とも0件)。
+  実装を推測で追加する根拠(仕様・test caseのいずれも存在しない)が
+  ないため、両fileを削除し、`script/ai_clients/gemini/__init__.py`の
+  `__all__`から関連exportを除去、moduleの先頭docstringに削除理由を記録した
+  (将来これらの機能が必要になった場合はGeminiClient契約へ新規taskとして
+  追加する旨を明記)。
+- **`.env`依存testの修正**: `tests/test_container_contract.py::
+  test_tc_env_001_02`が、gitignore対象で清潔なcheckoutには存在しない
+  実`.env`fileの存在を要求しており(`assert (_REPO_ROOT / ".env").is_file()`)、
+  清潔なcheckoutでは必ず失敗する状態だった。commit対象の
+  `.env.example`(新規)の存在確認へ置き換え、実`.env`を一時退避した状態で
+  該当testがpassすることを確認した(clean-checkout相当の動作確認)。
+- **文書整理**: root `README.md`(空だったものを新規執筆、環境構築・起動・
+  build・package・環境変数・既知の制限を記載)、`release/checklist.md`
+  (v1.0→v2.0、契約実装/実行時統合/実app起動を分離して記載)、
+  `docs/commands/CURRENT_STATE.md`(version 9.0→10.0、TASK-REVIEW-001
+  節を新設し「契約実装complete」と「実アプリ動作確認済み」の分離を明記)、
+  `docs/commands/STEP6_MANIFEST.json`(`mvp_status.runtime_integration_review`
+  object新設)、`package.json`(version `0.0.0-step4`→`0.1.0`、
+  `description`/`author`追加)を更新した。
+- **確認**: Python全体回帰 430 passed / 23 deselected / 10 xfailed
+  (TASK-ASR-001時点421から+9、新規: worker command registry test 8件 +
+  source symlink拒否test 1件)。TypeScript型検査success、error 0件。
+  Vitest 20 test files / 106 tests、103 passed + 3 skipped(TASK-ASR-001
+  時点16 files/73 passedから、composition root・Worker adapter・
+  file picker・Renderer root関連のtest追加分)。`npm run build`・
+  `npx electron-builder --dir`とも成功。
+- **未解決**: 実GUI起動(本開発環境にディスプレイなし)、外部runtime
+  (Gemini/Tesseract/VOICEVOX/ffmpeg)への実接続、Windows installerの
+  実インストール・実uninstall、code signingは、いずれもこの開発環境・
+  本reviewの範囲では確認・実装していない(詳細は`release/checklist.md`)。
+
+## 実際のbuild execution pipeline統合について(調査結果、未実装の理由)
+
+継続instructionで最優先とされた「`job.start`から実際にSource読込→AI資料分析→
+Curriculum/原稿生成→Claim検査→Narration→TTS→音声検査→MP3/M4B/text
+packaging→Artifact登録→Job成功、を実行する経路の接続」について、
+実装前に既存contractを調査した結果、**この接続には現在どの承認済み仕様にも
+test caseにも存在しない、最低3つの新しい設計決定が必要**であることが判明した。
+これらを推測で決めることは、本reviewが禁止する「新しい業務仕様の推測実装」に
+該当するため、実装しなかった。調査結果は以下のとおり。
+
+1. **verified scriptの永続化先が存在しない**: `script/schemas/script.py`の
+   `ScriptDocument`はdocstring上で`chapters/<chapter_id>/<stage>/script.yaml`への
+   対応を説明しているが、これへ実際に書き込む(`dump_yaml`等を呼ぶ)production
+   codeはリポジトリ全体に1つも存在しない。`script/pipelines/narration.py`の
+   `build_verified_script()`は、in-memoryの`ScriptDocument`を返すだけで
+   永続化しない。実在するのは`tests/fixtures/sample_book/script.yaml`という
+   test fixtureのみ。
+2. **`BuildRequest`からchapterを特定する経路が存在しない**: `BuildRequest`
+   (`script/domain/models.py`)は`chapter_id`を一切持たない。`ProjectPlan`
+   (`script/schemas/project_plan.py`)の`chapters`は未型付けの`Mapping`で、
+   `chapter_id`フィールドの存在も検証されていない。`BuildPipeline.run()`
+   自体が単一chapter限定の設計であり、複数chapterを持つBuildRequestを
+   どう扱うか(chapterごとに`run()`を何度呼ぶか等)も既存契約に定義がない。
+3. **VoiceProfileの永続化からの読込経路が存在しない**: `script/profiles/voices.py`の
+   `VoiceProfileRepository`は、呼び出し側がin-memoryで渡した
+   `Sequence[VoiceProfile]`から構築される設計で、fileや DBから読み込む
+   loaderが存在しない。`BuildRequest.voice_profile_id`(文字列)を実際の
+   `VoiceProfile`(ひいてはVOICEVOX speaker_id)へ解決する経路がない。
+
+`script/pipelines/build.py`の`BuildPipeline.run(build_request_id)`自体は
+承認gate確認・複数出力形式(mp3/text)のArtifact登録・manifest生成までを
+既に実装・test済みであり(`tests/test_build_pipeline.py`)、
+`chapter_content_provider: Callable[[BuildRequest], ChapterBuildContent]`を
+注入すれば動作する設計になっている。つまり**「注入する関数を書けば
+接続できる」という状態ではあるが、その関数が読むべきfileの場所・形式・
+chapter特定方法・voice profile解決方法がどれも仕様として決まっていない**、
+というのが本reviewでの調査結論である。
+
+この決定(仕様承認)を経ずに実装すると、将来の正式仕様と食い違う独自の
+file形式・orchestration方式を生み出すリスクが高いため、実装を見送った。
+次の作業者への申し送り: 上記3点を人間が仕様決定(`docs/spec-proposals/`
+経由の正規プロセスを推奨)した後、`script/worker/commands.py`の`job_start`
+handlerから`BuildPipeline.run()`を(非同期実行に変更した上で)呼び出す
+形で接続する。
+
+## TASK-REVIEW-001 完了時点のまとめ(次回作業者向け)
+
+- **完了**: composition root、Worker command registry、Electron⇔Worker
+  adapter、IPC channel不整合修正、Renderer root(App.vue)、安全なfile
+  picker、fail-closed承認gate確認、実build pipeline(vite/tsc)、
+  package生成確認、legacy scaffold(mindmap_builder等)削除、`.env`依存
+  test修正、docs/tasks・docs/spec-proposals/taskの完了済みfile削除、
+  Markdown link validator新規実装・0 broken確認、dump script除外追加、
+  STEP3/STEP4 scaffold削除。
+- **失敗中のtest**: なし(Python 435 passed / 23 deselected / 10 xfailed
+  [すべてTASK-COEIR-001分] / 0 failed、Docker 428 passed + 7 skipped
+  [docker CLI非対応環境skip] = 435でhostと完全一致、TypeScript typecheck
+  success、Vitest 103 passed / 3 skipped / 0 failed)。
+- **未接続・未実装**: 実際のbuild execution pipeline(Job1つから章単位で
+  実際にAI原稿生成→TTS→packagingを実行する経路。上記3点の仕様決定待ち)。
+  実GUI起動(本開発環境にディスプレイなし)。外部runtime
+  (Gemini/Tesseract/VOICEVOX/ffmpeg)への実接続。Windows NSISインストーラー
+  の実インストール・実uninstall。code signing。
+- **次の開始地点**: (1) 人間が「実際のbuild execution pipeline統合」に
+  必要な3つの設計決定(verified script永続化先、BuildRequest→chapter
+  特定方法、VoiceProfile永続化読込)を`docs/spec-proposals/`経由で正式化する。
+  (2) ディスプレイのある環境で`npm run start`の実GUI起動を確認する。
+  (3) 各種`.env`変数を設定し`docs/commands/external-connectivity.md`の
+  順序(設定確認→integration_smoke→integration_live)で外部runtime疎通を
+  確認する。(4) `npm run package`でのフルインストーラー生成・実インストール・
+  実uninstallを確認する。`TASK-COEIR-001`は今回も含め一貫して永久blockedの
+  まま維持されており、推測実装は一切行っていない。

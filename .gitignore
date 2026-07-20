@@ -8,6 +8,10 @@ node_modules/
 # ビルド結果
 dist/
 build/
+release/
+
+# pytest cache
+.pytest_cache/
 
 # ログ
 *.log

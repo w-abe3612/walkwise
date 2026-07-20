@@ -34,6 +34,12 @@ function fakeProjectService(overrides: Partial<ProjectServiceLike> = {}): Projec
       planningStage: "registered",
       updatedAt: "2026-07-20T00:00:00+09:00",
     })),
+    get: vi.fn().mockResolvedValue({
+      projectId: "proj-1",
+      title: "t",
+      planningStage: "registered",
+      updatedAt: "2026-07-20T00:00:00+09:00",
+    }),
     ...overrides,
   };
 }
@@ -133,7 +139,7 @@ describe("TASK-UI-001 Project一覧・新規作成画面", () => {
     const registeredChannels = (ipcMain.handle as unknown as { mock: { calls: unknown[][] } }).mock.calls.map(
       (call) => call[0],
     );
-    expect(registeredChannels).toEqual(["project:list", "project:create"]);
+    expect(registeredChannels).toEqual(["project:list", "project:create", "project:get"]);
   });
 
   test("TC-UI-001-09: 再実行時の決定性 [unit/P1]", async () => {

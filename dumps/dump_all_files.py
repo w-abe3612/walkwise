@@ -23,6 +23,14 @@ SKIP_DIR_NAMES = {
     ".venv",
     "venv",
     "node_modules",
+    # TASK-REVIEW-001: build/cache生成物がsource dumpへ混入するのを防ぐ。
+    ".pytest_cache",
+    "dist",
+    "build",
+    "release",
+    "coverage",
+    "htmlcov",
+    ".vite",
 }
 
 SKIP_FILE_NAMES = {
@@ -35,6 +43,9 @@ SKIP_GLOB_PATTERNS = {
     "*.mp3",
     "*.wav",
     "*.pyc",
+    # TASK-REVIEW-001: cache/log生成物を除外する。
+    ".coverage",
+    "*.log",
 }
 
 # dumps/output だけは再帰対象から除外する

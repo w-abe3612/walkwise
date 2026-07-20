@@ -1,22 +1,29 @@
 {
   "name": "walkwise",
   "private": true,
-  "version": "0.0.0-step4",
+  "version": "0.1.0",
   "type": "module",
+  "main": "dist/main/electron_main.js",
   "scripts": {
-    "build": "tsc --noEmit",
+    "dev": "vite",
     "typecheck": "tsc --noEmit",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "build": "npm run typecheck && npm run build:main && npm run build:renderer && node scripts/finalize-dist.mjs",
     "test": "vitest run",
-    "package": "electron-builder --dir"
+    "start": "npm run build && electron .",
+    "package": "npm run build && electron-builder --dir"
   },
+  "description": "Walkwise: 個人学習用オーディオブック制作デスクトップアプリ",
+  "author": "Walkwise project",
   "dependencies": {
-    "electron": "^39.0.0",
     "vue": "^3.5.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/test-utils": "^2.4.11",
+    "electron": "^39.0.0",
     "electron-builder": "^26.0.0",
     "jsdom": "^25.0.1",
     "typescript": "^5.9.0",

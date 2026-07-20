@@ -61,4 +61,21 @@ def _emit(stdout: TextIO, event: WorkerEvent) -> None:
 if __name__ == "__main__":  # pragma: no cover - exercised only by TASK-DESKTOP-002 smoke/live gates
     # Electron側(TASK-DESKTOP-002)がsubprocessとして起動するための実行可能entrypoint。
     # main(stdin, stdout)自体の契約(TASK-WORKER-001)は変更しない、純粋な追加。
-    sys.exit(main(sys.stdin, sys.stdout))
+    #
+    # TASK-REVIEW-001: 実行可能entrypointは`WALKWISE_DB_PATH`(Electron mainが
+    # bootstrap時に設定する)から実DBを開き、script/worker/commands.pyの
+    # 実handler registryを使う。未設定時は空registry(旧来どおりunknown_job_typeで
+    # 全requestを拒否する、後方互換の安全側既定)。
+    import os
+
+    db_path_env = os.environ.get("WALKWISE_DB_PATH")
+    if db_path_env:
+        from pathlib import Path
+
+        from script.worker.commands import bootstrap_worker_registry
+
+        active_registry = bootstrap_worker_registry(Path(db_path_env))
+    else:
+        active_registry = None
+
+    sys.exit(main(sys.stdin, sys.stdout, registry=active_registry))

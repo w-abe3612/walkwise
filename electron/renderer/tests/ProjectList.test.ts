@@ -84,6 +84,12 @@ describe("TASK-UI-001 Project一覧・新規作成画面", () => {
         planningStage: "registered",
         updatedAt: "x",
       }),
+      get: vi.fn().mockResolvedValue({
+        projectId: "proj-1",
+        title: "t",
+        planningStage: "registered",
+        updatedAt: "x",
+      }),
     };
     registerProjectIpcHandlers({ ipcMain, projectService });
     const createHandler = (ipcMain.handle as unknown as { mock: { calls: unknown[][] } }).mock.calls.find(

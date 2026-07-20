@@ -164,3 +164,19 @@ def test_tc_source_001_07(tmp_path: Path) -> None:
     first_get = service.list_for_project("database-foundations")
     second_get = service.list_for_project("database-foundations")
     assert first_get == second_get == [result.source]
+
+
+@pytest.mark.unit
+def test_tc_review_001_symlink_source_path_rejected(tmp_path: Path) -> None:
+    """TASK-REVIEW-001 2.6節 — symlink経由のsource登録はfail-closedで拒否される
+    (symlink先の実file内容がProject外にあってもcopy_immutableへ到達させない)。
+    """
+    service = _service(tmp_path)
+    real_file = _write_input_file(tmp_path, "real.txt", b"outside project content")
+    symlink_path = tmp_path / "incoming" / "link.txt"
+    symlink_path.symlink_to(real_file)
+
+    with pytest.raises(AppError):
+        service.register(
+            RegisterSource(project_id="database-foundations", source_id="src-symlink", source_path=symlink_path)
+        )

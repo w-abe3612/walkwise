@@ -20,6 +20,8 @@ export interface RegisterSourceInput {
 
 export interface SourceServiceLike {
   register(input: RegisterSourceInput): Promise<SourceSummary>;
+  list(projectId: string): Promise<readonly SourceSummary[]>;
+  retry(sourceId: string): Promise<SourceSummary>;
 }
 
 export class SourceValidationError extends Error {
@@ -81,5 +83,20 @@ export function registerSourceIpcHandlers(context: SourceIpcContext): void {
   context.ipcMain.handle("source:register", async (_event: unknown, rawInput: unknown) => {
     const validated = validateRegisterSourceInput(rawInput);
     return context.sourceService.register(validated);
+  });
+
+  context.ipcMain.handle("source:list", async (_event: unknown, rawProjectId: unknown) => {
+    if (typeof rawProjectId !== "string" || !rawProjectId.trim()) {
+      throw new SourceValidationError("validation_error", "projectId is required");
+    }
+    const sources = await context.sourceService.list(rawProjectId.trim());
+    return { sources };
+  });
+
+  context.ipcMain.handle("source:retry", async (_event: unknown, rawSourceId: unknown) => {
+    if (typeof rawSourceId !== "string" || !rawSourceId.trim()) {
+      throw new SourceValidationError("validation_error", "sourceId is required");
+    }
+    return context.sourceService.retry(rawSourceId.trim());
   });
 }

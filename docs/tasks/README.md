@@ -41,5 +41,15 @@ STEP7では修正責任を各実装タスクへ割り当てた。
 
 ## 旧タスク
 
-`16_image-material-ingestion.md`はsupersededであり、実行禁止である。
-`TASK-IMAGE-001`と`TASK-IMAGE-002`を使用する。
+`16_image-material-ingestion.md`(superseded、`TASK-IMAGE-001`/`TASK-IMAGE-002`への
+redirect専用文書)は、両taskとも完了したため`TASK-REVIEW-001`で削除した。
+
+## 完了タスク文書の削除(TASK-REVIEW-001)
+
+実行完了済み53タスク(MVP対象50件 + post-MVP対象3件)の個別task文書は、
+`TASK-REVIEW-001`(実行時統合とリポジトリ整理)の完了条件に従い削除した。
+現役文書は`TASK-COEIR-001`(永久blocked)と`TASK-REVIEW-001`自身のみ。
+詳細は[`INDEX.md`](INDEX.md)を参照。上記「現在の準備基準」の数値
+(454収集・431 xfailed等)はSTEP3空実装段階の開始時baselineとして
+意図的に固定された記述であり、削除後の現在の状態は
+`docs/commands/CURRENT_STATE.md`を正本とする。

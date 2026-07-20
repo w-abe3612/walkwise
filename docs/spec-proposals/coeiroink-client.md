@@ -8,7 +8,7 @@ merged_from:
   - "docs/spec-proposals/12-coeiroink-client.md (v0.1、初期ドラフト、削除済み)"
   - "docs/spec-proposals/generated-specifications/12-coeiroink-client.md (v0.2、削除済み)"
 depends_on:
-  - task/3_voice-profile-default-values.md
+  - "task/3_voice-profile-default-values.md (TASK-REVIEW-001で削除。決定内容は../specifications/09-voice-profile-schema.mdへ吸収済み。git履歴参照)"
 spec_refs:
   - ../specifications/10-tts-client-common-interface.md
   - ../specifications/11-voicevox-client.md

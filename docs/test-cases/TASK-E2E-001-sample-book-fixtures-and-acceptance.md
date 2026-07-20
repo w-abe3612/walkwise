@@ -10,7 +10,6 @@ depends_on:
 - TASK-DESKTOP-003
 - TASK-MIGRATION-001
 spec_refs:
-- docs/spec-proposals/task/1_sample-book-end-to-end-validation.md
 - docs/specifications/audiobook-creation-pipeline.md
 test_files:
 - tests/integration/test_sample_book_e2e.py

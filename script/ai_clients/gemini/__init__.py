@@ -1,3 +1,14 @@
+"""script/ai_clients/gemini — 公開契約: GeminiClient(client.py経由).
+
+TASK-REVIEW-001 2.7節: `merged_text_fixer.py`(`fix_text_file_with_gemini`)と
+`mindmap_builder.py`(`build_final_mindmap`/`load_sections`/`process_section`/`Section`)は、
+いずれも全body`NotImplementedError`のlegacy互換scaffoldで、どのtask・test・
+pipelineからも参照されていなかった(docs/notes/progress.mdで既に「未使用」と
+確認済み)。実装を推測で追加する根拠(仕様・test caseのいずれも存在しない)がないため、
+このscaffold自体を削除し、正式にdeprecateした。将来これらの機能が必要になった場合は、
+`GeminiClient`(client.py)の契約へ新規taskとして追加すること。
+"""
+
 from .client import (
     DEFAULT_API_KEY,
     DEFAULT_API_VERSION,
@@ -13,16 +24,6 @@ from .client import (
     render_prompt,
     split_text_into_chunks,
 )
-from .merged_text_fixer import fix_text_file_with_gemini
-from .mindmap_builder import (
-    DEFAULT_FALLBACK_INPUT_FILENAME,
-    DEFAULT_INPUT_FILENAME,
-    DEFAULT_OUTPUT_FILENAME,
-    Section,
-    build_final_mindmap,
-    load_sections,
-    process_section,
-)
 
 __all__ = [
     "DEFAULT_API_KEY",
@@ -31,20 +32,11 @@ __all__ = [
     "DEFAULT_MODEL",
     "DEFAULT_REQUEST_TIMEOUT_SEC",
     "DEFAULT_TEMPERATURE",
-    "DEFAULT_FALLBACK_INPUT_FILENAME",
-    "DEFAULT_INPUT_FILENAME",
-    "DEFAULT_OUTPUT_FILENAME",
     "ENV_PATH",
     "PROMPTS_DIR",
-    "Section",
-    "build_final_mindmap",
     "call_gemini",
-    "fix_text_file_with_gemini",
     "load_env_file",
     "load_prompt",
-    "load_sections",
-    "process_section",
     "render_prompt",
     "split_text_into_chunks",
 ]
-

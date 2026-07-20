@@ -31,6 +31,10 @@ class HandlerRegistry:
         """job_typeでhandlerを選択し、started/progress/artifact/completedのeventを順に出す。
 
         未登録job_typeはerror eventを返しprocessを継続する(例外を送出しない)。
+        handlerがgeneratorの`return`値を持つ場合、`completed` eventの`result`欄へ
+        付与する(TASK-REVIEW-001: CRUD系handlerがElectron mainへ戻り値を返すため)。
+        既存のlist/values-less generatorを返すhandlerとは完全後方互換(`result`は
+        付与されない)。
         """
         handler = self._handlers.get(request.job_type)
         if handler is None:
@@ -45,8 +49,16 @@ class HandlerRegistry:
         yield WorkerEvent(event="started", job_id=request.job_id)
 
         last_progress: int | None = None
+        result_payload = None
         try:
-            for event in handler(request, log):
+            generator = iter(handler(request, log))
+            while True:
+                try:
+                    event = next(generator)
+                except StopIteration as stop:
+                    result_payload = getattr(stop, "value", None)
+                    break
+
                 if event.data.get("event") == "progress":
                     current = event.data.get("current")
                     if last_progress is not None and current is not None and current < last_progress:
@@ -65,4 +77,7 @@ class HandlerRegistry:
             yield WorkerEvent(event="error", job_id=request.job_id, code="general_error", message=str(exc))
             return
 
-        yield WorkerEvent(event="completed", job_id=request.job_id)
+        completed_fields: dict[str, object] = {"event": "completed", "job_id": request.job_id}
+        if result_payload is not None:
+            completed_fields["result"] = result_payload
+        yield WorkerEvent(**completed_fields)

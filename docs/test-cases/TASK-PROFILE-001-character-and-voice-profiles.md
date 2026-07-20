@@ -11,7 +11,6 @@ depends_on:
 spec_refs:
 - docs/specifications/08-character-profile-schema.md
 - docs/specifications/09-voice-profile-schema.md
-- docs/spec-proposals/task/3_voice-profile-default-values.md
 test_files:
 - tests/test_character_profiles.py
 - tests/test_voice_profiles.py

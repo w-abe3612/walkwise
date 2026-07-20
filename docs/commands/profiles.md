@@ -26,8 +26,10 @@ STEP3/STEP4の空実装段階では、strict xfail・明示的未実装error・o
   - production: `script/profiles/characters.py`, `script/profiles/voices.py`, `script/schemas/profiles.py`
   - 対象9 case(TC-PROFILE-001-01〜09)はすべてpassする。
   - 話者ごとの最終速度・音量・無音時間・採用スタイルの確定は
-    `docs/spec-proposals/task/3_voice-profile-default-values.md`(status: draft、未承認)の
-    責務であり本タスクの対象外。COEIROINKは`TASK-COEIR-001`が永久にblockedのため、
+    `docs/specifications/09-voice-profile-schema.md`(旧提案
+    `docs/spec-proposals/task/3_voice-profile-default-values.md`は
+    `TASK-REVIEW-001`で削除・吸収済み、git履歴参照)の責務であり本タスクの
+    対象外。COEIROINKは`TASK-COEIR-001`が永久にblockedのため、
     MVPの`list_available()`はVOICEVOXの承認済みprofileだけを返す。
 
 ## 3. 実行前提

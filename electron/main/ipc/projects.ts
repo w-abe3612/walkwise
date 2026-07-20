@@ -25,6 +25,7 @@ export interface CreateProjectInput {
 export interface ProjectServiceLike {
   list(): Promise<readonly ProjectSummary[]>;
   create(input: CreateProjectInput): Promise<ProjectSummary>;
+  get(projectId: string): Promise<ProjectSummary>;
 }
 
 export class ProjectValidationError extends Error {
@@ -104,5 +105,12 @@ export function registerProjectIpcHandlers(context: ProjectIpcContext): void {
   context.ipcMain.handle("project:create", async (_event: unknown, rawInput: unknown) => {
     const validated = validateCreateProjectInput(rawInput);
     return context.projectService.create(validated);
+  });
+
+  context.ipcMain.handle("project:get", async (_event: unknown, rawProjectId: unknown) => {
+    if (typeof rawProjectId !== "string" || !rawProjectId.trim()) {
+      throw new ProjectValidationError("validation_error", "projectId is required");
+    }
+    return context.projectService.get(rawProjectId.trim());
   });
 }
