@@ -35,7 +35,7 @@ def validate_build_request(formats: Sequence[str], voice_profile_id: str | None)
     if "mp3" in formats and not voice_profile_id:
         raise AppError(
             ErrorCode.VALIDATION_ERROR,
-            "voice_profile_id is required when output_formats includes mp3",
+            "voice_profile_required: voice_profile_id is required when output_formats includes mp3",
         )
 
 

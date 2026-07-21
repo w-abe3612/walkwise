@@ -1,7 +1,9 @@
-"""script/persistence/migrations.py — 公開契約: MigrationRunner.apply_all/verify_applied_checksums.
+"""script/persistence/migrations.py — 公開契約: MigrationRunner.apply_all/verify_applied_checksums,
+check_orphaned_build_request_voice_profiles.
 
 Contract: docs/test-cases/TASK-DB-001-sqlite-migrations-and-initial-schema.md
-Spec: docs/db/00-database-overview.md (5.5節), docs/db/90-schema-migrations-table.md
+Spec: docs/db/00-database-overview.md (5.5節), docs/db/90-schema-migrations-table.md,
+      docs/tasks/TASK-BUILD-EXEC-001-build-execution-pipeline-and-voice-profile-db.md(4.3節)
 """
 
 from __future__ import annotations
@@ -124,3 +126,46 @@ class MigrationRunner:
             newly_applied.append(file.stem)
 
         return newly_applied
+
+
+def check_orphaned_build_request_voice_profiles(connection: sqlite3.Connection) -> list[tuple[str, str]]:
+    """TASK-BUILD-EXEC-001 4.3節: `0002_voice_profiles_and_build_execution`適用前に、
+    既存`build_requests.voice_profile_id`のうち`voice_profiles`テーブルに参照先が
+    ないもの(黙って削除・null化してはならない不整合データ)を検出する。
+
+    `voice_profiles`テーブルがまだ存在しない場合(0002適用前の通常の状態)、
+    `build_requests`に非NULLの`voice_profile_id`を持つ行があれば、それはすべて
+    参照先不在として扱う(このmigration以前は`voice_profile_id`を検証する仕組みが
+    一切なかったため)。戻り値は空なら安全、非空なら
+    `[(build_request_id, voice_profile_id), ...]`を安全な情報(build_request_id/
+    voice_profile_idのみ、他の秘密値は含まない)として返す。呼び出し側が
+    このリストが空であることを確認してからmigrationを適用すること。
+    """
+    if connection is None:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "connection is required")
+
+    tables = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[0]
+        for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }
+    if "build_requests" not in tables:
+        return []  # build_requestsテーブル自体が存在しない(初回起動前)場合は対象外。
+
+    if "voice_profiles" not in tables:
+        rows = connection.execute(
+            "SELECT build_request_id, voice_profile_id FROM build_requests WHERE voice_profile_id IS NOT NULL"
+        ).fetchall()
+    else:
+        rows = connection.execute(
+            "SELECT br.build_request_id, br.voice_profile_id FROM build_requests br "
+            "WHERE br.voice_profile_id IS NOT NULL "
+            "AND br.voice_profile_id NOT IN (SELECT voice_profile_id FROM voice_profiles)"
+        ).fetchall()
+
+    return [
+        (
+            row["build_request_id"] if isinstance(row, sqlite3.Row) else row[0],
+            row["voice_profile_id"] if isinstance(row, sqlite3.Row) else row[1],
+        )
+        for row in rows
+    ]

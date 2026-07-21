@@ -30,13 +30,15 @@ def test_tc_db_001_01(tmp_path: Path) -> None:
     Layer: integration_mock
     Given: 空SQLite DB
     When: 全migrationを適用する
-    Then: 6テーブル・FK・index・checkが作成される
+    Then: 7テーブル(schema_migrations含む)・FK・index・checkが作成される
     """
     connection = connect_database(tmp_path / "app.db")
     runner = MigrationRunner()
 
     applied = runner.apply_all(connection, _MIGRATIONS_DIR)
-    assert applied == ["0001_initial"]
+    # TASK-BUILD-EXEC-001で0002_voice_profiles_and_build_executionを追加したため、
+    # 空DBへは0001に続けて0002も適用される。
+    assert applied == ["0001_initial", "0002_voice_profiles_and_build_execution"]
 
     tables = {
         row["name"]
@@ -44,6 +46,7 @@ def test_tc_db_001_01(tmp_path: Path) -> None:
     }
     assert tables == {
         "schema_migrations", "projects", "sources", "build_requests", "jobs", "artifacts",
+        "voice_profiles",
     }
 
     indexes = {
@@ -121,6 +124,14 @@ def test_tc_db_001_07(tmp_path: Path) -> None:
         "(project_id, title, domain, planning_stage, content_revision, plan_file_path, created_at, updated_at) "
         "VALUES (?, ?, 'database', 'registered', 1, 'project/project-plan.yaml', ?, ?)",
         ("database-foundations", "データベース基礎", now, now),
+    )
+    # TASK-BUILD-EXEC-001: build_requests.voice_profile_idはvoice_profilesへのFKになったため、
+    # 参照先の行を先に用意する。
+    connection.execute(
+        "INSERT INTO voice_profiles "
+        "(voice_profile_id, project_id, name, engine, speaker_id, status, created_at, updated_at) "
+        "VALUES ('sample-voicevox-profile', 'database-foundations', 'sample profile', 'voicevox', '3', 'approved', ?, ?)",
+        (now, now),
     )
     connection.execute(
         "INSERT INTO build_requests "

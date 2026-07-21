@@ -149,10 +149,16 @@ def test_tc_review_001_04_job_start_is_fail_closed_until_approved(tmp_path: Path
     satisfied_events = _run(registry, "build_request.approval_gate_satisfied", build_request_id=build_request_id)
     assert satisfied_events[-1].result == {"satisfied": True}
 
+    # TASK-BUILD-EXEC-001: job.startはapproval gate通過後、実際に
+    # BuildExecutionOrchestratorを同期実行する。このtestのProjectにはchapterを
+    # 1件も定義していないため、gate自体は満たされていてもbuild_target_not_ready
+    # (承認gateとは別の、build対象未整備によるfail-closed)でfailedになる。
     started_events = _run(registry, "job.start", build_request_id=build_request_id)
     assert started_events[-1].event == "completed"
-    job_id = started_events[-1].result["job"]["job_id"]
-    assert started_events[-1].result["job"]["status"] in ("running", "queued")
+    job = started_events[-1].result["job"]
+    job_id = job["job_id"]
+    assert job["status"] == "failed"
+    assert job["error_code"] == "build_target_not_ready"
 
     get_events = _run(registry, "job.get", job_id=job_id)
     assert get_events[-1].result["job"]["job_id"] == job_id
@@ -160,9 +166,9 @@ def test_tc_review_001_04_job_start_is_fail_closed_until_approved(tmp_path: Path
     list_events = _run(registry, "job.list", project_id="proj-1")
     assert [j["job_id"] for j in list_events[-1].result["jobs"]] == [job_id]
 
+    # 終端状態(failed)のJobはcancelできない(不正な状態遷移として拒否される)。
     cancel_events = _run(registry, "job.cancel", job_id=job_id)
-    assert cancel_events[-1].event == "completed"
-    assert cancel_events[-1].result["job"]["status"] == "cancel_requested"
+    assert cancel_events[-1].event == "error"
 
 
 @pytest.mark.integration_mock
@@ -231,3 +237,95 @@ def test_tc_review_001_08_voice_list_engines_never_raises_regardless_of_engine_s
     assert isinstance(events[-1].result["speakers"], list)
     if not events[-1].result["health"]["available"]:
         assert events[-1].result["speakers"] == []
+
+
+@pytest.mark.integration_mock
+def test_tc_build_exec_001_worker_01_voice_profile_crud_lifecycle(tmp_path: Path, migrated_connection) -> None:
+    """TC-BUILD-EXEC-001-WORKER-01 — voice_profile.create/list/get/update/archiveがVoiceProfileServiceへ委譲される。
+
+    Contract: docs/tasks/TASK-BUILD-EXEC-001-build-execution-pipeline-and-voice-profile-db.md(14節)
+    """
+    registry = build_default_registry(tmp_path, migrated_connection)
+    _run(registry, "project.create", project_id="proj-1", title="t", domain="d", purpose="p")
+
+    create_events = _run(
+        registry, "voice_profile.create", project_id="proj-1", name="ナレーター1", engine="voicevox", speaker_id="3",
+    )
+    assert create_events[-1].event == "completed"
+    voice_profile = create_events[-1].result["voice_profile"]
+    assert voice_profile["status"] == "draft"
+    voice_profile_id = voice_profile["voice_profile_id"]
+
+    list_events = _run(registry, "voice_profile.list", project_id="proj-1")
+    assert [record["voice_profile_id"] for record in list_events[-1].result["voice_profiles"]] == [voice_profile_id]
+
+    get_events = _run(registry, "voice_profile.get", voice_profile_id=voice_profile_id)
+    assert get_events[-1].result["voice_profile"]["name"] == "ナレーター1"
+
+    update_events = _run(registry, "voice_profile.update", voice_profile_id=voice_profile_id, status="approved")
+    assert update_events[-1].result["voice_profile"]["status"] == "approved"
+
+    archive_events = _run(registry, "voice_profile.archive", voice_profile_id=voice_profile_id)
+    assert archive_events[-1].result["voice_profile"]["status"] == "archived"
+
+    # archived後の更新は拒否される(物理削除はしないが、以後の変更はできない)。
+    blocked_events = _run(registry, "voice_profile.update", voice_profile_id=voice_profile_id, name="renamed")
+    assert blocked_events[-1].event == "error"
+
+
+@pytest.mark.integration_mock
+def test_tc_build_exec_001_worker_02_voice_profile_create_rejects_unknown_project(
+    tmp_path: Path, migrated_connection
+) -> None:
+    """TC-BUILD-EXEC-001-WORKER-02 — 存在しないProjectを参照するvoice_profile.createは拒否される。"""
+    registry = build_default_registry(tmp_path, migrated_connection)
+    events = _run(
+        registry, "voice_profile.create", project_id="does-not-exist", name="n", engine="voicevox", speaker_id="3",
+    )
+    assert events[-1].event == "error"
+
+
+@pytest.mark.integration_mock
+def test_tc_build_exec_001_worker_03_job_start_runs_text_only_build_end_to_end(
+    tmp_path: Path, migrated_connection
+) -> None:
+    """TC-BUILD-EXEC-001-WORKER-03 — job.startは実際にBuildExecutionOrchestratorを実行し、
+    text-onlyのbuildをTTS/ffmpegを一切必要とせず完了できる。
+
+    Contract: docs/tasks/TASK-BUILD-EXEC-001-build-execution-pipeline-and-voice-profile-db.md(11, 14節)
+    """
+    from script.core.serialization import dump_yaml, load_yaml
+
+    registry = build_default_registry(tmp_path, migrated_connection)
+    _run(registry, "project.create", project_id="proj-1", title="t", domain="d", purpose="p")
+
+    plan_path = tmp_path / "library" / "proj-1" / "project" / "project-plan.yaml"
+    plan = load_yaml(plan_path)
+    plan["chapters"] = [{"chapter_id": "ch01", "order": 1}]
+    dump_yaml(plan_path, plan)
+
+    script_path = tmp_path / "library" / "proj-1" / "chapters" / "ch01" / "verified" / "script.yaml"
+    dump_yaml(
+        script_path,
+        {
+            "schema_version": "1.0", "chapter_id": "ch01",
+            "segments": [{"segment_id": "segment-01", "order": 1, "text": "本文1", "tts_text": "音声1", "claim_ids": []}],
+        },
+    )
+
+    approval_service = ApprovalService(tmp_path)
+    for gate in ("verified_script", "preview_audio"):
+        approval_service.submit("proj-1", gate, target=ApprovalTarget(paths=("dummy.txt",), content_hash="deadbeef"))
+        _run(registry, "approval.approve", project_id="proj-1", gate=gate, approved_by="reviewer")
+
+    build_events = _run(registry, "build_request.create", project_id="proj-1", output_formats=["text"])
+    build_request_id = build_events[-1].result["build_request"]["build_request_id"]
+
+    started_events = _run(registry, "job.start", build_request_id=build_request_id)
+    job = started_events[-1].result["job"]
+    assert job["status"] == "succeeded"
+    assert job["error_code"] is None
+
+    artifact_events = _run(registry, "artifact.list", project_id="proj-1")
+    assert len(artifact_events[-1].result["artifacts"]) == 1
+    assert artifact_events[-1].result["artifacts"][0]["artifact_type"] == "text_verified_script"

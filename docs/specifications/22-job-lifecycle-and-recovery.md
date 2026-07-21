@@ -2,13 +2,14 @@
 spec_id: 22-job-lifecycle-and-recovery
 title: "Jobライフサイクルと復旧"
 status: approved
-version: "1.0"
+version: "1.1"
 approved_at: "2026-07-19"
-last_updated: "2026-07-19"
+last_updated: "2026-07-22"
 spec_refs:
   - 07-approval-workflow.md
   - 21-electron-python-worker-interface.md
   - 17-local-data-persistence-policy.md
+  - ../tasks/TASK-BUILD-EXEC-001-build-execution-pipeline-and-voice-profile-db.md
 ---
 
 # Jobライフサイクルと復旧
@@ -120,6 +121,40 @@ flowchart TD
 再実行する。既存の承認済みパイプライン仕様が定義する再利用条件
 (`audiobook-creation-pipeline.md` 16節)により、既に完了済みの工程は
 再利用され、実質的に高速な再実行になる。
+
+### 5.7 Build実行の進捗段階(TASK-BUILD-EXEC-001)
+
+BuildExecutionOrchestratorは、`jobs.last_message`へ次の段階名を記録することで
+進捗を表現する(`docs/db/04-jobs-table.md`)。chapter単位の段階では
+`<段階名>:<chapter_id>`の形式にし、`progress_current`/`progress_total`へ
+処理済みchapter数/全chapter数を記録する。
+
+```text
+resolving_build_target
+validating_verified_scripts
+loading_voice_profile
+checking_runtime
+synthesizing_chapter
+validating_audio
+packaging_chapter
+writing_text
+writing_manifest
+registering_artifacts
+completed
+```
+
+text-onlyのBuildは`loading_voice_profile`/`checking_runtime`/
+`synthesizing_chapter`/`validating_audio`/`packaging_chapter`を一切経由しない
+(TTS/VOICEVOX/音声検証/ffmpegを呼び出さない)。
+
+失敗時は`status: failed`とあわせて`jobs.error_code`/`error_stage`/
+`error_detail_json`を記録する(`docs/db/04-jobs-table.md`)。`error_stage`は
+上記の段階名と一致させる。安定したerror codeの例:
+`build_target_not_ready`、`voice_profile_not_approved`、
+`voice_profile_archived`、`tts_engine_unreachable`、`tts_synthesis_failed`、
+`audio_validation_failed`。1chapterでも`build_target_not_ready`の原因が
+あれば、TTS呼び出しを一切開始せずJob全体を拒否する
+(`script/services/build_target_resolution.py`)。
 
 ## 6. 入力
 

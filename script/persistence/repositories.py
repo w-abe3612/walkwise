@@ -1,7 +1,7 @@
-"""script/persistence/repositories.py — 公開契約: 5 Repository + map_integrity_error.
+"""script/persistence/repositories.py — 公開契約: 6 Repository + map_integrity_error.
 
 Contract: docs/test-cases/TASK-DB-002-repositories-and-unit-of-work.md
-Spec: docs/db/00-database-overview.md, docs/db/01〜05-*-table.md
+Spec: docs/db/00-database-overview.md, docs/db/01〜06-*-table.md
 """
 
 from __future__ import annotations
@@ -10,8 +10,15 @@ import json
 import sqlite3
 
 from script.core.errors import AppError, ErrorCode
-from script.domain.enums import ArtifactType, BuildStatus, JobStatus, PlanningStage, SourceStatus
-from script.domain.models import Artifact, BuildRequest, Job, Project, Source
+from script.domain.enums import (
+    ArtifactType,
+    BuildStatus,
+    JobStatus,
+    PlanningStage,
+    SourceStatus,
+    VoiceProfileRecordStatus,
+)
+from script.domain.models import Artifact, BuildRequest, Job, Project, Source, VoiceProfileRecord
 from script.domain.validation import canonicalize_output_formats
 
 
@@ -233,11 +240,12 @@ class JobRepository:
             self._connection.execute(
                 "INSERT INTO jobs "
                 "(job_id, build_request_id, job_type, status, parent_job_id, progress_current, "
-                "progress_total, last_message, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "progress_total, last_message, started_at, finished_at, error_code, error_stage, "
+                "error_detail_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     job.job_id, job.build_request_id, job.job_type, job.status.value, job.parent_job_id,
                     job.progress_current, job.progress_total, job.last_message, job.started_at,
-                    job.finished_at,
+                    job.finished_at, job.error_code, job.error_stage, job.error_detail_json,
                 ),
             )
         except sqlite3.IntegrityError as exc:
@@ -259,10 +267,11 @@ class JobRepository:
         try:
             cursor = self._connection.execute(
                 "UPDATE jobs SET status=?, progress_current=?, progress_total=?, last_message=?, "
-                "started_at=?, finished_at=? WHERE job_id=?",
+                "started_at=?, finished_at=?, error_code=?, error_stage=?, error_detail_json=? WHERE job_id=?",
                 (
                     job.status.value, job.progress_current, job.progress_total, job.last_message,
-                    job.started_at, job.finished_at, job.job_id,
+                    job.started_at, job.finished_at, job.error_code, job.error_stage,
+                    job.error_detail_json, job.job_id,
                 ),
             )
         except sqlite3.IntegrityError as exc:
@@ -272,6 +281,7 @@ class JobRepository:
 
     @staticmethod
     def _to_model(row: sqlite3.Row) -> Job:
+        row_keys = row.keys()
         return Job(
             job_id=row["job_id"],
             build_request_id=row["build_request_id"],
@@ -282,6 +292,9 @@ class JobRepository:
             progress_total=row["progress_total"],
             last_message=row["last_message"],
             started_at=row["started_at"],
+            error_code=row["error_code"] if "error_code" in row_keys else None,
+            error_stage=row["error_stage"] if "error_stage" in row_keys else None,
+            error_detail_json=row["error_detail_json"] if "error_detail_json" in row_keys else None,
             finished_at=row["finished_at"],
         )
 
@@ -341,6 +354,97 @@ class ArtifactRepository:
 
 def _dump_output_formats(formats: tuple[str, ...]) -> str:
     return json.dumps(list(formats), separators=(",", ":"))
+
+
+class VoiceProfileRepository:
+    """`voice_profiles`テーブル(DB正本、TASK-BUILD-EXEC-001)の型付きrepository。
+
+    `script/profiles/voices.py`の`VoiceProfileRepository`(呼び出し側がin-memoryで
+    渡すYAML時代のvoice profile一覧から選択するだけの別クラス)とは責務が異なる。
+    互換性のため`script/profiles/voices.py`側は変更していない。物理削除は実装しない
+    (archiveのみ、既存の`status`列更新で表現する)。
+    """
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = _require_connection(connection)
+
+    def insert(self, profile: VoiceProfileRecord) -> None:
+        try:
+            self._connection.execute(
+                "INSERT INTO voice_profiles "
+                "(voice_profile_id, project_id, name, engine, speaker_id, style_id, speed_scale, "
+                "pitch_scale, intonation_scale, volume_scale, sentence_pause_ms, paragraph_pause_ms, "
+                "section_pause_ms, chapter_pause_ms, settings_json, status, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    profile.voice_profile_id, profile.project_id, profile.name, profile.engine,
+                    profile.speaker_id, profile.style_id, profile.speed_scale, profile.pitch_scale,
+                    profile.intonation_scale, profile.volume_scale, profile.sentence_pause_ms,
+                    profile.paragraph_pause_ms, profile.section_pause_ms, profile.chapter_pause_ms,
+                    profile.settings_json, profile.status.value, profile.created_at, profile.updated_at,
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise map_integrity_error(exc) from exc
+
+    def find(self, voice_profile_id: str) -> VoiceProfileRecord | None:
+        if not voice_profile_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "voice_profile_id is required")
+        row = self._connection.execute(
+            "SELECT * FROM voice_profiles WHERE voice_profile_id = ?", (voice_profile_id,)
+        ).fetchone()
+        return self._to_model(row) if row is not None else None
+
+    def list_by_project(self, project_id: str) -> list[VoiceProfileRecord]:
+        if not project_id:
+            raise AppError(ErrorCode.VALIDATION_ERROR, "project_id is required")
+        rows = self._connection.execute(
+            "SELECT * FROM voice_profiles WHERE project_id = ? ORDER BY name", (project_id,)
+        ).fetchall()
+        return [self._to_model(row) for row in rows]
+
+    def update(self, profile: VoiceProfileRecord) -> None:
+        try:
+            cursor = self._connection.execute(
+                "UPDATE voice_profiles SET name=?, engine=?, speaker_id=?, style_id=?, speed_scale=?, "
+                "pitch_scale=?, intonation_scale=?, volume_scale=?, sentence_pause_ms=?, "
+                "paragraph_pause_ms=?, section_pause_ms=?, chapter_pause_ms=?, settings_json=?, "
+                "status=?, updated_at=? WHERE voice_profile_id=?",
+                (
+                    profile.name, profile.engine, profile.speaker_id, profile.style_id,
+                    profile.speed_scale, profile.pitch_scale, profile.intonation_scale,
+                    profile.volume_scale, profile.sentence_pause_ms, profile.paragraph_pause_ms,
+                    profile.section_pause_ms, profile.chapter_pause_ms, profile.settings_json,
+                    profile.status.value, profile.updated_at, profile.voice_profile_id,
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise map_integrity_error(exc) from exc
+        if cursor.rowcount == 0:
+            raise AppError(ErrorCode.NOT_FOUND, f"voice profile not found: {profile.voice_profile_id}")
+
+    @staticmethod
+    def _to_model(row: sqlite3.Row) -> VoiceProfileRecord:
+        return VoiceProfileRecord(
+            voice_profile_id=row["voice_profile_id"],
+            project_id=row["project_id"],
+            name=row["name"],
+            engine=row["engine"],
+            speaker_id=row["speaker_id"],
+            style_id=row["style_id"],
+            speed_scale=row["speed_scale"],
+            pitch_scale=row["pitch_scale"],
+            intonation_scale=row["intonation_scale"],
+            volume_scale=row["volume_scale"],
+            sentence_pause_ms=row["sentence_pause_ms"],
+            paragraph_pause_ms=row["paragraph_pause_ms"],
+            section_pause_ms=row["section_pause_ms"],
+            chapter_pause_ms=row["chapter_pause_ms"],
+            settings_json=row["settings_json"],
+            status=VoiceProfileRecordStatus(row["status"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
 
 
 def _load_output_formats(value: str) -> tuple[str, ...]:

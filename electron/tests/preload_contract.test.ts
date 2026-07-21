@@ -99,4 +99,28 @@ describe("TASK-DESKTOP-001 Electron/Vue scaffold・main/preload安全境界", ()
     }
     expect(exposeInMainWorld).not.toHaveBeenCalled();
   });
+
+  test("TC-BUILD-EXEC-001-PRELOAD-01: voiceProfile APIは固定allowlist内のchannelだけを使う [unit/P0]", async () => {
+    const invoke = vi.fn().mockResolvedValue({});
+    const api = buildWalkwiseApi({ invoke, on: vi.fn(), removeListener: vi.fn() });
+
+    await api.voiceProfile.create({ projectId: "proj-1", name: "n", engine: "voicevox", speakerId: "3" });
+    expect(invoke).toHaveBeenCalledWith("voice-profile:create", expect.any(Object));
+
+    await api.voiceProfile.list("proj-1");
+    expect(invoke).toHaveBeenCalledWith("voice-profile:list", "proj-1");
+
+    await api.voiceProfile.get("vp-1");
+    expect(invoke).toHaveBeenCalledWith("voice-profile:get", "vp-1");
+
+    await api.voiceProfile.update({ voiceProfileId: "vp-1", status: "approved" });
+    expect(invoke).toHaveBeenCalledWith("voice-profile:update", expect.any(Object));
+
+    await api.voiceProfile.archive("vp-1");
+    expect(invoke).toHaveBeenCalledWith("voice-profile:archive", "vp-1");
+
+    for (const call of invoke.mock.calls) {
+      expect(ALLOWED_CHANNELS).toContain(call[0]);
+    }
+  });
 });

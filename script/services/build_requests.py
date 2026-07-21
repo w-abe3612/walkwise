@@ -2,6 +2,10 @@
 
 Contract: docs/test-cases/TASK-BUILD-001-build-request-service.md
 Spec: docs/db/03-build-requests-table.md
+
+TASK-BUILD-EXEC-001(2.4, 7節): BuildRequestは同一Projectの承認済み(approved)
+VoiceProfileしか参照できない。draft/archivedの参照、別ProjectのVoiceProfileの
+参照は、DBのFK制約に到達する前にVoiceProfileServiceの安定したerror codeで拒否する。
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from script.domain.models import BuildRequest
 from script.domain.validation import canonicalize_output_formats, validate_build_request
 from script.persistence.repositories import ProjectRepository
 from script.persistence.unit_of_work import SqliteUnitOfWork
+from script.services.voice_profiles import VoiceProfileService
 
 
 @dataclass(frozen=True)
@@ -58,6 +63,13 @@ class BuildRequestService:
 
         if ProjectRepository(self._connection).find(command.project_id) is None:
             raise AppError(ErrorCode.NOT_FOUND, f"project not found: {command.project_id}")
+
+        if command.voice_profile_id is not None:
+            # 同一Project所属・archived不可・approvedのみ(draftはmp3は元より、いずれの
+            # Build種別でも新規参照を許可しない)。
+            VoiceProfileService(self._connection).assert_usable_for_build(
+                command.voice_profile_id, command.project_id
+            )
 
         now = _now_iso()
         build_request = BuildRequest(

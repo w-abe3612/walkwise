@@ -12,12 +12,13 @@ import pytest
 
 import script.persistence as _persistence_pkg
 from script.core.errors import AppError
-from script.domain.enums import BuildStatus, PlanningStage
+from script.domain.enums import BuildStatus, PlanningStage, VoiceProfileRecordStatus
 from script.domain.models import Project
 from script.persistence.database import connect_database
 from script.persistence.migrations import MigrationRunner
 from script.persistence.repositories import ProjectRepository
 from script.services.build_requests import BuildRequestService, CreateBuildRequest, serialize_output_formats
+from script.services.voice_profiles import CreateVoiceProfile, UpdateVoiceProfile, VoiceProfileService
 
 pytestmark = pytest.mark.mvp
 
@@ -39,6 +40,14 @@ def _service(tmp_path: Path, name: str = "app.db", project_id: str = "database-f
             created_at=now,
             updated_at=now,
         )
+    )
+    # TASK-BUILD-EXEC-001: build_requests.voice_profile_idはvoice_profilesへのFKになったため、
+    # 参照先の行を先に用意する。
+    connection.execute(
+        "INSERT INTO voice_profiles "
+        "(voice_profile_id, project_id, name, engine, speaker_id, status, created_at, updated_at) "
+        "VALUES ('sample-voicevox-profile', ?, 'sample profile', 'voicevox', '3', 'approved', ?, ?)",
+        (project_id, now, now),
     )
     connection.commit()
     return BuildRequestService(connection)
@@ -211,3 +220,102 @@ def test_tc_build_001_08(tmp_path: Path) -> None:
 
     existing = ProjectRepository(service._connection).find("database-foundations")
     assert existing is not None
+
+
+@pytest.mark.unit
+def test_tc_build_001_09_rejects_draft_voice_profile(tmp_path: Path) -> None:
+    """TC-BUILD-001-09 — TASK-BUILD-EXEC-001 7節: draft状態のVoiceProfileはBuild参照に使えない。
+
+    Contract: docs/tasks/TASK-BUILD-EXEC-001-build-execution-pipeline-and-voice-profile-db.md(7節)
+    """
+    service = _service(tmp_path)
+    VoiceProfileService(service._connection).create(
+        CreateVoiceProfile(
+            voice_profile_id="vp-draft", project_id="database-foundations", name="draft-profile",
+            engine="voicevox", speaker_id="3",
+        )
+    )
+
+    with pytest.raises(AppError, match="voice_profile_not_approved"):
+        service.create(
+            CreateBuildRequest(
+                build_request_id="br-draft-voice", project_id="database-foundations",
+                output_formats=["mp3", "text"], voice_profile_id="vp-draft",
+            )
+        )
+
+
+@pytest.mark.unit
+def test_tc_build_001_10_rejects_archived_voice_profile(tmp_path: Path) -> None:
+    """TC-BUILD-001-10 — TASK-BUILD-EXEC-001 7節: archived状態のVoiceProfileはBuild参照に使えない。
+
+    Contract: docs/tasks/TASK-BUILD-EXEC-001-build-execution-pipeline-and-voice-profile-db.md(7節)
+    """
+    service = _service(tmp_path)
+    voice_service = VoiceProfileService(service._connection)
+    voice_service.create(
+        CreateVoiceProfile(
+            voice_profile_id="vp-archived", project_id="database-foundations", name="archived-profile",
+            engine="voicevox", speaker_id="3",
+        )
+    )
+    voice_service.update(UpdateVoiceProfile(voice_profile_id="vp-archived", status=VoiceProfileRecordStatus.APPROVED))
+    voice_service.archive("vp-archived")
+
+    with pytest.raises(AppError, match="voice_profile_archived"):
+        service.create(
+            CreateBuildRequest(
+                build_request_id="br-archived-voice", project_id="database-foundations",
+                output_formats=["text"], voice_profile_id="vp-archived",
+            )
+        )
+
+
+@pytest.mark.unit
+def test_tc_build_001_11_rejects_cross_project_voice_profile(tmp_path: Path) -> None:
+    """TC-BUILD-001-11 — TASK-BUILD-EXEC-001 7節: 別ProjectのVoiceProfileは参照できない。
+
+    Contract: docs/tasks/TASK-BUILD-EXEC-001-build-execution-pipeline-and-voice-profile-db.md(7節)
+    """
+    service = _service(tmp_path)
+    ProjectRepository(service._connection).insert(
+        Project(
+            project_id="other-project", title="別Project", domain="other", planning_stage=PlanningStage.REGISTERED,
+            content_revision=1, plan_file_path="project/project-plan.yaml",
+            created_at="2026-07-19T21:00:00+09:00", updated_at="2026-07-19T21:00:00+09:00",
+        )
+    )
+    voice_service = VoiceProfileService(service._connection)
+    voice_service.create(
+        CreateVoiceProfile(
+            voice_profile_id="vp-other", project_id="other-project", name="other-profile",
+            engine="voicevox", speaker_id="3",
+        )
+    )
+    voice_service.update(UpdateVoiceProfile(voice_profile_id="vp-other", status=__import__(
+        "script.domain.enums", fromlist=["VoiceProfileRecordStatus"]
+    ).VoiceProfileRecordStatus.APPROVED))
+
+    with pytest.raises(AppError, match="voice_profile_project_mismatch"):
+        service.create(
+            CreateBuildRequest(
+                build_request_id="br-cross-project-voice", project_id="database-foundations",
+                output_formats=["text"], voice_profile_id="vp-other",
+            )
+        )
+
+
+@pytest.mark.unit
+def test_tc_build_001_12_accepts_approved_voice_profile(tmp_path: Path) -> None:
+    """TC-BUILD-001-12 — TASK-BUILD-EXEC-001 7節: 同一Projectのapproved VoiceProfileは参照できる。
+
+    Contract: docs/tasks/TASK-BUILD-EXEC-001-build-execution-pipeline-and-voice-profile-db.md(7節)
+    """
+    service = _service(tmp_path)
+    result = service.create(
+        CreateBuildRequest(
+            build_request_id="br-approved-voice", project_id="database-foundations",
+            output_formats=["mp3", "text"], voice_profile_id="sample-voicevox-profile",
+        )
+    )
+    assert result.voice_profile_id == "sample-voicevox-profile"

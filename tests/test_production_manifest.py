@@ -13,6 +13,7 @@ from io import BytesIO
 import pytest
 
 from script.audio.packaging import ChapterAudioInput, ChapterMetadata, ChapterPackager
+from script.core.errors import AppError
 from script.schemas.production_manifest import ManifestOutput, ProductionManifest
 
 pytestmark = pytest.mark.mvp
@@ -105,3 +106,65 @@ def test_tc_audio_003_09() -> None:
     result_2 = packager.package(wavs, _metadata())
 
     assert result_1 == result_2
+
+
+@pytest.mark.unit
+def test_tc_build_exec_001_manifest_01_new_fields_are_optional_and_backward_compatible() -> None:
+    """TC-BUILD-EXEC-001-MANIFEST-01 — TASK-BUILD-EXEC-001 13節の新filedは省略可能で、既存出力形状を壊さない。"""
+    output = ManifestOutput(
+        audio_id="ch01-mp3-v0001", output_type="chapter_mp3", chapter_id="ch01",
+        path="audio/chapters/ch01-v0001.mp3", content_hash="hash-mp3",
+    )
+    manifest = ProductionManifest(project_id="proj-1", outputs=(output,))
+    mapping = manifest.to_mapping()
+
+    assert mapping["build_request_id"] is None
+    assert mapping["job_id"] is None
+    assert mapping["chapter_order"] == []
+    assert mapping["output_formats"] == []
+    assert mapping["verified_script_paths"] == []
+    assert mapping["verified_script_content_hashes"] == []
+    assert mapping["voice_profile_snapshot"] is None
+    assert mapping["voice_profile_config_hash"] is None
+    assert {entry["path"] for entry in mapping["outputs"]} == {"audio/chapters/ch01-v0001.mp3"}
+
+
+@pytest.mark.unit
+def test_tc_build_exec_001_manifest_02_carries_voice_profile_snapshot_and_chapter_order() -> None:
+    """TC-BUILD-EXEC-001-MANIFEST-02 — voice_profile_snapshot/config_hash/chapter_orderを保持する。"""
+    output = ManifestOutput(
+        audio_id="ch01-mp3-v0001", output_type="chapter_mp3", chapter_id="ch01",
+        path="audio/chapters/ch01-v0001.mp3", content_hash="hash-mp3",
+    )
+    snapshot = {"voice_profile_id": "vp-1", "engine": "voicevox", "speaker_id": "3"}
+    manifest = ProductionManifest(
+        project_id="proj-1", outputs=(output,),
+        build_request_id="br-1", job_id="job-1", created_at="2026-07-22T00:00:00+09:00",
+        chapter_order=("ch01", "ch02"), output_formats=("mp3", "text"),
+        verified_script_paths=("chapters/ch01/verified/script.yaml",),
+        verified_script_content_hashes=("hash-script-1",),
+        voice_profile_snapshot=snapshot, voice_profile_config_hash="hash-config-1",
+    )
+
+    mapping = manifest.to_mapping()
+    assert mapping["build_request_id"] == "br-1"
+    assert mapping["job_id"] == "job-1"
+    assert mapping["chapter_order"] == ["ch01", "ch02"]
+    assert mapping["output_formats"] == ["mp3", "text"]
+    assert mapping["voice_profile_snapshot"] == snapshot
+    assert mapping["voice_profile_config_hash"] == "hash-config-1"
+
+
+@pytest.mark.unit
+def test_tc_build_exec_001_manifest_03_rejects_mismatched_verified_script_lengths() -> None:
+    """TC-BUILD-EXEC-001-MANIFEST-03 — verified_script_pathsとcontent_hashesの件数不一致は拒否する。"""
+    output = ManifestOutput(
+        audio_id="ch01-mp3-v0001", output_type="chapter_mp3", chapter_id="ch01",
+        path="audio/chapters/ch01-v0001.mp3", content_hash="hash-mp3",
+    )
+    with pytest.raises(AppError):
+        ProductionManifest(
+            project_id="proj-1", outputs=(output,),
+            verified_script_paths=("chapters/ch01/verified/script.yaml", "chapters/ch02/verified/script.yaml"),
+            verified_script_content_hashes=("hash-1",),
+        )

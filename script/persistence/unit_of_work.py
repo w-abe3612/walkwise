@@ -16,6 +16,7 @@ from script.persistence.repositories import (
     JobRepository,
     ProjectRepository,
     SourceRepository,
+    VoiceProfileRepository,
     map_integrity_error,
 )
 
@@ -32,6 +33,8 @@ class SqliteUnitOfWork:
         self.build_requests = BuildRequestRepository(connection)
         self.jobs = JobRepository(connection)
         self.artifacts = ArtifactRepository(connection)
+        # TASK-BUILD-EXEC-001: 既存transaction境界(5.12節)を壊さない、後方互換な追加。
+        self.voice_profiles = VoiceProfileRepository(connection)
 
     def __enter__(self) -> "SqliteUnitOfWork":
         return self

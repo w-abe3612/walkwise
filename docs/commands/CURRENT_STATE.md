@@ -1,13 +1,66 @@
 ---
 document_type: preparation_state
 status: in_progress
-version: "10.0"
-last_updated: "2026-07-20"
-current_state_verified: "2026-07-20"
-verified_by: "TASK-REVIEW-001 runtime integration and repository cleanup review"
+version: "11.0"
+last_updated: "2026-07-22"
+current_state_verified: "2026-07-22"
+verified_by: "TASK-BUILD-EXEC-001 build execution pipeline and voice profile DB implementation"
 ---
 
 # 実装準備状態(実測)
+
+本書はダンプ記載の数値ではなく、直接リポジトリを実測した結果を正本とする。
+過去のダンプに基づく件数は古い状態を示すことがあるため、以下の
+「TASK-BUILD-EXEC-001実装後の実測」節と、それ以前の節(version 10.0まで、
+`2026-07-20`実測)の数値が食い違う場合は本節を優先する。
+
+## TASK-BUILD-EXEC-001実装後の実測(2026-07-22)
+
+TASK-REVIEW-001完了後、以下の3点の未解決仕様ギャップ(TASK-REVIEW-001監査が
+特定した「実装せず報告した」箇所)を、人間承認済み設計(TASK-BUILD-EXEC-001)に
+基づき実装した。
+
+1. **VoiceProfile DB正本化**: `voice_profiles`テーブル新設(migration
+   `0002_voice_profiles_and_build_execution.sql`)、`VoiceProfileRecord`/
+   `VoiceProfileRecordStatus`(draft/approved/archived)、
+   `VoiceProfileRepository`/`VoiceProfileService`(Project所属・name重複・
+   status遷移・archive-onlyを検証)。
+2. **chapter順序・verified script解決**: `project-plan.yaml`の`chapters[]`
+   (order昇順)をchapter順序の正本とし(folder名の文字列順は使わない)、
+   `chapters/<chapter_id>/verified/script.yaml`の存在・schema・chapter_id
+   一致・`verified_script`承認gateを、TTS呼び出し前に全chapter分検証する
+   (`script/services/build_target_resolution.py`)。
+3. **Build Execution Orchestrator**: chapter順序解決→VoiceProfile snapshot
+   (Job開始時に1回だけ読み込む不変値)→TTS合成→音声検証→chapter
+   packaging→text出力→production manifest→Artifact登録(全chapter成功後に
+   まとめて登録、部分登録なし)→Job succeeded、という実際の順序制御を
+   `script/pipelines/build_execution.py::BuildExecutionOrchestrator`として
+   新設した(既存の単一chapter向け`BuildPipeline`は変更せず維持)。
+   Worker `job.start`から実際に呼び出される(`script/worker/commands.py`)。
+
+Python側regressionは**498 passed, 23 skipped(既定opt-in), 3 deselected
+(Docker daemon未起動), 10 xfailed(すべてTASK-COEIR-001、恒久blocked),
+0 failed**(2026-07-22実測)。新規追加分: VoiceProfile永続化18件、
+BuildRequest検証強化4件、chapter順序/verified script解決12件、VoiceProfile
+snapshot6件、Build Execution Orchestrator7件、production manifest拡張3件、
+Worker command5件、JobService lifecycle5件。TypeScript/Vitest側は
+electron main(`voice_profile:*` IPC・adapter)を追加し、全体110 passed,
+3 skipped(既定opt-in)、0 failed(2026-07-22実測)。
+
+**未解決・人間承認が必要な項目(実装せず報告)**:
+
+- **Build Settings画面(`docs/screens/03-build-settings.md`)とVoiceProfile
+  選択導線の不整合**: 現行の承認済み画面仕様は、VOICEVOXのspeaker/style一覧
+  (`voice:list-engines`)から都度選択するモデルを前提としており、
+  Project単位で事前登録・承認するVoiceProfile(本task)を選択する導線を
+  一切定義していない。Electron main側の`voice_profile:*` IPC・adapter・
+  Worker commandは実装・テスト済みだが、Rendererの`BuildSettings.vue`は
+  意図的に変更していない(画面のUI/UX刷新は人間承認が必要な範囲のため)。
+  詳細は本書末尾の完了report、または`docs/tasks/`配下のTASK-BUILD-EXEC-001
+  完了reportを参照。
+
+以前の節(以下)は`2026-07-20`時点の実測であり、TASK-BUILD-EXEC-001による
+上記追加を反映していない。
 
 本書はダンプ記載の数値ではなく、`2026-07-20`にリポジトリを直接実測した結果を正本とする。
 過去のダンプに基づく件数(19件存在・90件欠落・22件収集・17 xfailed / 5 skipped 等)は

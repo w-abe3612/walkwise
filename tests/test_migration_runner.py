@@ -35,7 +35,9 @@ def test_tc_db_001_02(tmp_path: Path) -> None:
     runner = MigrationRunner()
 
     first_run = runner.apply_all(connection, _MIGRATIONS_DIR)
-    assert first_run == ["0001_initial"]
+    # TASK-BUILD-EXEC-001で0002_voice_profiles_and_build_executionを追加したため、
+    # 空DBへは0001に続けて0002も適用される。
+    assert first_run == ["0001_initial", "0002_voice_profiles_and_build_execution"]
 
     history_before = list(
         connection.execute("SELECT migration_id, checksum, applied_at FROM schema_migrations")

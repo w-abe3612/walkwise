@@ -24,11 +24,13 @@ from pathlib import Path
 from typing import Any
 
 import script.persistence as _persistence_pkg
+from script.audio.packaging import ChapterPackager, make_ffmpeg_mp3_encoder
 from script.core.errors import AppError, ErrorCode
-from script.domain.enums import SourceStatus
+from script.domain.enums import SourceStatus, VoiceProfileRecordStatus
 from script.persistence.database import connect_database
 from script.persistence.migrations import MigrationRunner
 from script.persistence.repositories import ArtifactRepository, BuildRequestRepository, JobRepository
+from script.pipelines.build_execution import BuildExecutionOrchestrator
 from script.schemas.approvals import ApprovalGate, ApprovalStatus
 from script.services.approvals import ApprovalService
 from script.services.artifacts import ArtifactService
@@ -36,7 +38,9 @@ from script.services.build_requests import BuildRequestService, CreateBuildReque
 from script.services.jobs import JobService
 from script.services.projects import CreateProject, ProjectService
 from script.services.sources import RegisterSource, SourceService
+from script.services.voice_profiles import CreateVoiceProfile, UpdateVoiceProfile, VoiceProfileService
 from script.tts_clients.base import TTSClientError
+from script.tts_clients.registry import TTSClientRegistry
 from script.tts_clients.voicevox.client import VoicevoxHttpClient
 from script.worker.handlers import HandlerRegistry
 from script.worker.protocol import WorkerError, WorkerEvent, WorkerRequest
@@ -75,6 +79,16 @@ def _param(request: WorkerRequest, name: str, *, required: bool = True) -> Any:
 
 def _wrap_app_error(exc: AppError) -> WorkerError:
     return WorkerError(exc.code.value, exc.message)
+
+
+def _optional_float(request: WorkerRequest, name: str) -> float | None:
+    value = request.parameters.get(name)
+    return float(value) if value is not None else None
+
+
+def _optional_int(request: WorkerRequest, name: str) -> int | None:
+    value = request.parameters.get(name)
+    return int(value) if value is not None else None
 
 
 def _approval_gate_satisfied_for_build(
@@ -125,6 +139,16 @@ def build_default_registry(data_root: Path, connection: sqlite3.Connection) -> H
 
     job_service = JobService(connection, approval_gate_check=_approval_gate_check)
     artifact_service = ArtifactService(data_root, connection)
+    voice_profile_service = VoiceProfileService(connection)
+
+    # TASK-BUILD-EXEC-001: TTS engineはvoicevoxのみ登録する(TASK-COEIR-001は
+    # 恒久的にblocked扱いのため、coeiroinkは一切登録・接続しない)。
+    tts_registry = TTSClientRegistry()
+    tts_registry.register("voicevox", VoicevoxHttpClient())
+    chapter_packager = ChapterPackager(mp3_encoder=make_ffmpeg_mp3_encoder())
+    build_execution_orchestrator = BuildExecutionOrchestrator(
+        connection=connection, data_root=data_root, tts_registry=tts_registry, chapter_packager=chapter_packager,
+    )
 
     def health(request: WorkerRequest, log: Log) -> Iterator[WorkerEvent]:
         log("health check requested")
@@ -267,6 +291,10 @@ def build_default_registry(data_root: Path, connection: sqlite3.Connection) -> H
         yield  # pragma: no cover
 
     def job_start(request: WorkerRequest, log: Log) -> Iterator[WorkerEvent]:
+        """TASK-BUILD-EXEC-001 14節: build.executeを新設せずjob.startを再利用し、
+        このJobが実際にrunningへ進んだ場合はBuildExecutionOrchestratorで
+        chapter順序解決からArtifact登録までを実行する。
+        """
         build_request_id = _param(request, "build_request_id")
         job_id = _param(request, "job_id", required=False) or _new_id("job")
         try:
@@ -275,8 +303,98 @@ def build_default_registry(data_root: Path, connection: sqlite3.Connection) -> H
         except AppError as exc:
             raise _wrap_app_error(exc) from exc
         log(f"job enqueued: {job_id}")
-        result_job = started if started is not None and started.job_id == job_id else job_repository.find(job_id)
+
+        if started is not None and started.job_id == job_id:
+            try:
+                result = build_execution_orchestrator.run(job_id)
+                log(f"build execution finished: {result.status}")
+            except AppError as exc:
+                # Job自体はorchestrator内でfailed/error_code等を記録済みのため、
+                # ここではWorkerErrorへ変換せず、更新後のJob状態をそのまま返す。
+                log(f"build execution failed: {exc.message}")
+
+        result_job = job_repository.find(job_id)
         return {"job": _serialize(result_job)}
+        yield  # pragma: no cover
+
+    def voice_profile_create(request: WorkerRequest, log: Log) -> Iterator[WorkerEvent]:
+        command = CreateVoiceProfile(
+            voice_profile_id=_param(request, "voice_profile_id", required=False) or _new_id("voice-profile"),
+            project_id=_param(request, "project_id"),
+            name=_param(request, "name"),
+            engine=_param(request, "engine"),
+            speaker_id=_param(request, "speaker_id"),
+            style_id=_param(request, "style_id", required=False),
+            speed_scale=_optional_float(request, "speed_scale") or 1.0,
+            pitch_scale=_optional_float(request, "pitch_scale") or 0.0,
+            intonation_scale=_optional_float(request, "intonation_scale") or 1.0,
+            volume_scale=_optional_float(request, "volume_scale") or 1.0,
+            sentence_pause_ms=_optional_int(request, "sentence_pause_ms") or 250,
+            paragraph_pause_ms=_optional_int(request, "paragraph_pause_ms") or 600,
+            section_pause_ms=_optional_int(request, "section_pause_ms") or 1000,
+            chapter_pause_ms=_optional_int(request, "chapter_pause_ms") or 1500,
+            settings_json=_param(request, "settings_json", required=False) or "{}",
+        )
+        try:
+            record = voice_profile_service.create(command)
+        except AppError as exc:
+            raise _wrap_app_error(exc) from exc
+        log(f"voice profile created: {record.voice_profile_id}")
+        return {"voice_profile": _serialize(record)}
+        yield  # pragma: no cover
+
+    def voice_profile_list(request: WorkerRequest, log: Log) -> Iterator[WorkerEvent]:
+        project_id = _param(request, "project_id")
+        try:
+            records = voice_profile_service.list_by_project(project_id)
+        except AppError as exc:
+            raise _wrap_app_error(exc) from exc
+        return {"voice_profiles": [_serialize(record) for record in records]}
+        yield  # pragma: no cover
+
+    def voice_profile_get(request: WorkerRequest, log: Log) -> Iterator[WorkerEvent]:
+        voice_profile_id = _param(request, "voice_profile_id")
+        try:
+            record = voice_profile_service.get(voice_profile_id)
+        except AppError as exc:
+            raise _wrap_app_error(exc) from exc
+        return {"voice_profile": _serialize(record)}
+        yield  # pragma: no cover
+
+    def voice_profile_update(request: WorkerRequest, log: Log) -> Iterator[WorkerEvent]:
+        status_value = _param(request, "status", required=False)
+        try:
+            command = UpdateVoiceProfile(
+                voice_profile_id=_param(request, "voice_profile_id"),
+                name=_param(request, "name", required=False),
+                engine=_param(request, "engine", required=False),
+                speaker_id=_param(request, "speaker_id", required=False),
+                style_id=_param(request, "style_id", required=False),
+                speed_scale=_optional_float(request, "speed_scale"),
+                pitch_scale=_optional_float(request, "pitch_scale"),
+                intonation_scale=_optional_float(request, "intonation_scale"),
+                volume_scale=_optional_float(request, "volume_scale"),
+                sentence_pause_ms=_optional_int(request, "sentence_pause_ms"),
+                paragraph_pause_ms=_optional_int(request, "paragraph_pause_ms"),
+                section_pause_ms=_optional_int(request, "section_pause_ms"),
+                chapter_pause_ms=_optional_int(request, "chapter_pause_ms"),
+                settings_json=_param(request, "settings_json", required=False),
+                status=VoiceProfileRecordStatus(status_value) if status_value else None,
+            )
+            record = voice_profile_service.update(command)
+        except AppError as exc:
+            raise _wrap_app_error(exc) from exc
+        return {"voice_profile": _serialize(record)}
+        yield  # pragma: no cover
+
+    def voice_profile_archive(request: WorkerRequest, log: Log) -> Iterator[WorkerEvent]:
+        voice_profile_id = _param(request, "voice_profile_id")
+        try:
+            record = voice_profile_service.archive(voice_profile_id)
+        except AppError as exc:
+            raise _wrap_app_error(exc) from exc
+        log(f"voice profile archived: {voice_profile_id}")
+        return {"voice_profile": _serialize(record)}
         yield  # pragma: no cover
 
     def job_get(request: WorkerRequest, log: Log) -> Iterator[WorkerEvent]:
@@ -396,6 +514,11 @@ def build_default_registry(data_root: Path, connection: sqlite3.Connection) -> H
     registry.register("artifact.get", artifact_get)
     registry.register("voice.list_engines", voice_list_engines)
     registry.register("voice.preview", voice_preview)
+    registry.register("voice_profile.create", voice_profile_create)
+    registry.register("voice_profile.list", voice_profile_list)
+    registry.register("voice_profile.get", voice_profile_get)
+    registry.register("voice_profile.update", voice_profile_update)
+    registry.register("voice_profile.archive", voice_profile_archive)
 
     return registry
 

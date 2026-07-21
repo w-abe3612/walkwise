@@ -27,6 +27,12 @@ import type {
 import type { JobServiceLike, JobStatus, JobSummary, ProgressEvent } from "./ipc/jobs";
 import type { ArtifactServiceLike, ArtifactSummary } from "./ipc/artifacts";
 import type { EngineHealth, ListEnginesResult, PreviewInput, PreviewResult, SpeakerOption, VoiceServiceLike } from "./ipc/voice";
+import type {
+  CreateVoiceProfileInput,
+  UpdateVoiceProfileInput,
+  VoiceProfileServiceLike,
+  VoiceProfileSummary,
+} from "./ipc/voice_profiles";
 
 type Raw = Record<string, unknown>;
 
@@ -81,6 +87,22 @@ function toJobSummary(raw: Raw): JobSummary & BuildJobSummary {
     progressTotal: (raw.progress_total as number | null) ?? undefined,
     lastMessage: (raw.last_message as string | null) ?? undefined,
     stale: raw.last_message === "stale_job_detected_on_startup",
+  };
+}
+
+function toVoiceProfileSummary(raw: Raw): VoiceProfileSummary {
+  return {
+    voiceProfileId: raw.voice_profile_id as string,
+    projectId: raw.project_id as string,
+    name: raw.name as string,
+    engine: raw.engine as string,
+    speakerId: raw.speaker_id as string,
+    styleId: (raw.style_id as string | null) ?? undefined,
+    status: raw.status as string,
+    speedScale: raw.speed_scale as number,
+    pitchScale: raw.pitch_scale as number,
+    intonationScale: raw.intonation_scale as number,
+    volumeScale: raw.volume_scale as number,
   };
 }
 
@@ -313,6 +335,53 @@ export function createVoiceServiceAdapter(manager: WorkerManager): VoiceServiceL
         speed_scale: input.speedScale,
       });
       return { previewId: result.previewId as string, outputPath: result.outputPath as string };
+    },
+  };
+}
+
+/**
+ * `voice_profile.*`(Projectに紐づくDB正本VoiceProfileのCRUD)を委譲する。
+ * `voice.list_engines`(VOICEVOX engine自体のspeaker/style列挙)とは別concept。
+ */
+export function createVoiceProfileServiceAdapter(manager: WorkerManager): VoiceProfileServiceLike {
+  return {
+    async create(input: CreateVoiceProfileInput): Promise<VoiceProfileSummary> {
+      const result = await workerResult(manager, "voice_profile.create", {
+        project_id: input.projectId,
+        name: input.name,
+        engine: input.engine,
+        speaker_id: input.speakerId,
+        style_id: input.styleId,
+        speed_scale: input.speedScale,
+        pitch_scale: input.pitchScale,
+        intonation_scale: input.intonationScale,
+        volume_scale: input.volumeScale,
+      });
+      return toVoiceProfileSummary(result.voice_profile as Raw);
+    },
+    async list(projectId: string): Promise<readonly VoiceProfileSummary[]> {
+      const result = await workerResult(manager, "voice_profile.list", { project_id: projectId });
+      return (result.voice_profiles as Raw[]).map(toVoiceProfileSummary);
+    },
+    async get(voiceProfileId: string): Promise<VoiceProfileSummary> {
+      const result = await workerResult(manager, "voice_profile.get", { voice_profile_id: voiceProfileId });
+      return toVoiceProfileSummary(result.voice_profile as Raw);
+    },
+    async update(input: UpdateVoiceProfileInput): Promise<VoiceProfileSummary> {
+      const result = await workerResult(manager, "voice_profile.update", {
+        voice_profile_id: input.voiceProfileId,
+        name: input.name,
+        speed_scale: input.speedScale,
+        pitch_scale: input.pitchScale,
+        intonation_scale: input.intonationScale,
+        volume_scale: input.volumeScale,
+        status: input.status,
+      });
+      return toVoiceProfileSummary(result.voice_profile as Raw);
+    },
+    async archive(voiceProfileId: string): Promise<VoiceProfileSummary> {
+      const result = await workerResult(manager, "voice_profile.archive", { voice_profile_id: voiceProfileId });
+      return toVoiceProfileSummary(result.voice_profile as Raw);
     },
   };
 }

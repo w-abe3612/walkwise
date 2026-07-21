@@ -149,3 +149,78 @@ def test_tc_job_001_10(tmp_path: Path) -> None:
     unchanged = service.start_next()
     assert unchanged.job_id == snapshot.job_id
     assert unchanged.build_request_id == snapshot.build_request_id
+
+
+@pytest.mark.unit
+def test_tc_job_001_11_mark_running_and_report_progress(tmp_path: Path) -> None:
+    """TC-JOB-001-11 — TASK-BUILD-EXEC-001 11節: mark_running/report_progressは特定Jobをqueue非経由で進行させる。
+
+    Contract: docs/tasks/TASK-BUILD-EXEC-001-build-execution-pipeline-and-voice-profile-db.md(11, 12節)
+    """
+    service = _service(tmp_path)
+    service.enqueue("job-1", "br-0001", "build_execution")
+
+    running = service.mark_running("job-1")
+    assert running.status is JobStatus.RUNNING
+
+    progressed = service.report_progress("job-1", stage="synthesizing_chapter:ch01", progress_current=1, progress_total=3)
+    assert progressed.last_message == "synthesizing_chapter:ch01"
+    assert progressed.progress_current == 1
+    assert progressed.progress_total == 3
+    assert progressed.status is JobStatus.RUNNING
+
+
+@pytest.mark.unit
+def test_tc_job_001_12_succeed(tmp_path: Path) -> None:
+    """TC-JOB-001-12 — succeedはrunning→succeededへ完了させ、finished_atを記録する。"""
+    service = _service(tmp_path)
+    service.enqueue("job-1", "br-0001", "build_execution")
+    service.mark_running("job-1")
+
+    completed = service.succeed("job-1", message="build_execution_completed")
+    assert completed.status is JobStatus.SUCCEEDED
+    assert completed.finished_at is not None
+    assert completed.last_message == "build_execution_completed"
+
+
+@pytest.mark.unit
+def test_tc_job_001_13_fail_records_error_fields(tmp_path: Path) -> None:
+    """TC-JOB-001-13 — TASK-BUILD-EXEC-001 12節: failは安定したerror_code/error_stage/error_detail_jsonを記録する。"""
+    service = _service(tmp_path)
+    service.enqueue("job-1", "br-0001", "build_execution")
+    service.mark_running("job-1")
+
+    failed = service.fail(
+        "job-1", error_code="build_target_not_ready", error_stage="validating_verified_scripts",
+        error_detail_json='{"chapters": [{"chapter_id": "ch01", "error_code": "verified_script_not_found"}]}',
+    )
+    assert failed.status is JobStatus.FAILED
+    assert failed.finished_at is not None
+    assert failed.error_code == "build_target_not_ready"
+    assert failed.error_stage == "validating_verified_scripts"
+    assert "verified_script_not_found" in failed.error_detail_json
+
+
+@pytest.mark.unit
+def test_tc_job_001_14_mark_cancelled(tmp_path: Path) -> None:
+    """TC-JOB-001-14 — mark_cancelledはcancel_requested→cancelledへ進める。"""
+    service = _service(tmp_path)
+    service.enqueue("job-1", "br-0001", "build_execution")
+    service.mark_running("job-1")
+    service.request_cancel("job-1")
+
+    cancelled = service.mark_cancelled("job-1")
+    assert cancelled.status is JobStatus.CANCELLED
+    assert cancelled.finished_at is not None
+
+
+@pytest.mark.unit
+def test_tc_job_001_15_fail_rejects_illegal_transition(tmp_path: Path) -> None:
+    """TC-JOB-001-15 — 既にsucceededなJobをfailへ遷移させることはできない。"""
+    service = _service(tmp_path)
+    service.enqueue("job-1", "br-0001", "build_execution")
+    service.mark_running("job-1")
+    service.succeed("job-1")
+
+    with pytest.raises(AppError):
+        service.fail("job-1", error_code="internal_error", error_stage="writing_manifest")

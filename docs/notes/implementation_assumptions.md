@@ -1,7 +1,7 @@
 ---
 document_type: implementation_assumptions_log
 status: in_progress
-last_updated: "2026-07-19"
+last_updated: "2026-07-22"
 ---
 
 # 実装時の仮定記録(夜間自律実行)
@@ -2049,3 +2049,39 @@ last_updated: "2026-07-19"
 - 置き換え条件: 将来これらの機能(mindmap構築、テキスト整形)が
   実際に必要になった場合、`script/ai_clients/gemini/client.py`の
   `GeminiClient`契約へ新規taskとして追加する。
+
+## TASK-BUILD-EXEC-001: VoiceProfile→古いVoiceProfileスキーマへのadapter
+
+- 対象: `script/pipelines/build_execution.py`(検討したが不採用、
+  実装せず)
+- 仮定: 既存の`script/audio/synthesis.py::SegmentSynthesizer`は
+  `script/schemas/script.py::ScriptDocument`(`stage="verified"`必須、
+  segmentごとに`SpeakerRef`必須)と`script/schemas/profiles.py::VoiceProfile`
+  (YAML時代、`engine_identity.engine_version`/`audition_approved`が
+  approved状態で必須)を要求するが、実際に永続化されているverified
+  script.yaml(`tests/fixtures/sample_book/script.yaml`と同型)には
+  speaker/segment_type/stage相当のfieldが存在せず、TASK-BUILD-EXEC-001の
+  新しいDB正本VoiceProfileにも`engine_identity`/`audition_approved`に
+  相当する概念がない。
+- 判断: `SegmentSynthesizer`を経由せず、Build Execution Orchestratorから
+  `TTSClient.synthesize()`を1segmentにつき1回直接呼び出す設計にした
+  (300文字超segmentの内部分割は、`SegmentSynthesizer`の複数part WAVを
+  1segment分の単一ファイルへ結合しない既存の設計上の穴を継承しないため、
+  本orchestratorの対象外とした。300文字超のtext_for_ttsはengine側の
+  `TEXT_TOO_LONG`としてそのまま失敗させ、サイレント分割・切り詰めは
+  行わない)。`narration.mode: single_speaker_per_chapter`
+  (`project-plan.yaml`の既存承認済みfield)により、章あたり単一speakerが
+  前提であることは確認済みで、per-segment character割り当てを新たに
+  発明する必要はなかった。
+- 根拠: `SegmentSynthesizer`の300文字超分割・cacheは価値ある機能だが、
+  それを流用するには`ScriptDocument`/`VoiceProfile`という別世代のschemaへ
+  変換するadapterが必要になり、かつ`SegmentSynthesizer`自体の
+  part-file命名の食い違い(`SegmentAudio.output_path`と実際に書き込まれる
+  part fileのpathが一致しない、既存の潜在的な問題)を新しい統合経路へ
+  持ち込むリスクがあった。TTS呼び出し自体は`TTSClientRegistry`/
+  `TTSClient` protocolという既存の安定契約を直接使うため、新しい業務
+  ロジックの推測は発生していない。
+- 置き換え条件: 将来、300文字超segmentの複数part結合が必要になった場合、
+  `SegmentSynthesizer`のpart file命名を修正したうえで、Build Execution
+  Orchestratorから利用するように切り替える(既存のcaching機能も
+  合わせて活用できる)。

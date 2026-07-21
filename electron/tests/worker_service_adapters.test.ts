@@ -21,6 +21,7 @@ import {
   createJobServiceAdapter,
   createProjectServiceAdapter,
   createSourceServiceAdapter,
+  createVoiceProfileServiceAdapter,
   createVoiceServiceAdapter,
   type ShellLike,
 } from "../main/worker_service_adapters";
@@ -300,5 +301,48 @@ describe("TASK-REVIEW-001 Worker service adapters", () => {
 
     const changes = await adapter.requestChanges({ projectId: "p1", gate: "planning", reason: "修正してください" });
     expect(changes.comment).toBe("修正してください");
+  });
+
+  test("voice profile adapter maps voice_profile.create/list/get/update/archive", async () => {
+    const record = (overrides: Record<string, unknown> = {}) => ({
+      voice_profile_id: "vp-1",
+      project_id: "proj-1",
+      name: "ナレーター1",
+      engine: "voicevox",
+      speaker_id: "3",
+      style_id: null,
+      status: "draft",
+      speed_scale: 1.0,
+      pitch_scale: 0.0,
+      intonation_scale: 1.0,
+      volume_scale: 1.0,
+      ...overrides,
+    });
+
+    const manager = fakeWorkerManager({
+      "voice_profile.create": (params) => ({ voice_profile: record({ project_id: params.project_id, name: params.name }) }),
+      "voice_profile.list": () => ({ voice_profiles: [record()] }),
+      "voice_profile.get": () => ({ voice_profile: record() }),
+      "voice_profile.update": () => ({ voice_profile: record({ status: "approved" }) }),
+      "voice_profile.archive": () => ({ voice_profile: record({ status: "archived" }) }),
+    });
+    const adapter = createVoiceProfileServiceAdapter(manager);
+
+    const created = await adapter.create({ projectId: "proj-1", name: "ナレーター1", engine: "voicevox", speakerId: "3" });
+    expect(created.voiceProfileId).toBe("vp-1");
+    expect(created.name).toBe("ナレーター1");
+
+    const list = await adapter.list("proj-1");
+    expect(list).toHaveLength(1);
+    expect(list[0].status).toBe("draft");
+
+    const got = await adapter.get("vp-1");
+    expect(got.speakerId).toBe("3");
+
+    const updated = await adapter.update({ voiceProfileId: "vp-1", status: "approved" });
+    expect(updated.status).toBe("approved");
+
+    const archived = await adapter.archive("vp-1");
+    expect(archived.status).toBe("archived");
   });
 });

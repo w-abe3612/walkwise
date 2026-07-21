@@ -39,10 +39,19 @@ def _seed(connection: sqlite3.Connection, project_id: str = "database-foundation
             plan_file_path="project/project-plan.yaml", created_at=now, updated_at=now,
         )
     )
+    # TASK-BUILD-EXEC-001: build_requests.voice_profile_idはvoice_profilesへのFKになったため、
+    # 参照先の行を先に用意する(project_idごとに一意なIDにする)。
+    voice_profile_id = f"sample-voicevox-profile-{project_id}"
+    connection.execute(
+        "INSERT INTO voice_profiles "
+        "(voice_profile_id, project_id, name, engine, speaker_id, status, created_at, updated_at) "
+        "VALUES (?, ?, 'sample profile', 'voicevox', '3', 'approved', ?, ?)",
+        (voice_profile_id, project_id, now, now),
+    )
     BuildRequestRepository(connection).insert(
         BuildRequest(
             build_request_id=build_request_id, project_id=project_id, output_formats=("mp3", "text"),
-            status=BuildStatus.DRAFT, created_at=now, updated_at=now, voice_profile_id="sample-voicevox-profile",
+            status=BuildStatus.DRAFT, created_at=now, updated_at=now, voice_profile_id=voice_profile_id,
         )
     )
     JobRepository(connection).insert(

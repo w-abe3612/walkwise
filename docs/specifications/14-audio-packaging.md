@@ -141,6 +141,20 @@ mp3:
   "project_id": "database-introduction",
   "content_revision": 3,
   "voice_profile_revision": 2,
+  "build_request_id": "br-0001",
+  "job_id": "job-0001",
+  "created_at": "2026-07-22T00:00:00+09:00",
+  "chapter_order": ["ch01", "ch02"],
+  "output_formats": ["mp3", "text"],
+  "verified_script_paths": ["chapters/ch01/verified/script.yaml", "chapters/ch02/verified/script.yaml"],
+  "verified_script_content_hashes": ["...", "..."],
+  "voice_profile_snapshot": {
+    "voice_profile_id": "vp-0001",
+    "voice_profile_name": "ナレーター1",
+    "engine": "voicevox",
+    "speaker_id": "3"
+  },
+  "voice_profile_config_hash": "...",
   "outputs": [
     {
       "audio_id": "ch01-r0003",
@@ -154,6 +168,16 @@ mp3:
   ]
 }
 ```
+
+TASK-BUILD-EXEC-001(2026-07-22): `build_request_id`/`job_id`/`created_at`/
+`chapter_order`/`output_formats`/`verified_script_paths`/
+`verified_script_content_hashes`/`voice_profile_snapshot`/
+`voice_profile_config_hash`はBuildExecutionOrchestratorが追加したfieldであり、
+すべてoptional(既存の1.0 schema消費者との後方互換を保つ)。text-onlyの
+Buildでは`voice_profile_snapshot`/`voice_profile_config_hash`は`null`になる。
+`voice_profile_snapshot`はJob開始時に一度だけ読み込んだ不変snapshotであり、
+manifest生成後にVoiceProfileが更新されても過去のmanifestの内容は変化しない。
+詳細: `docs/db/06-voice-profiles-table.md`、`script/schemas/production_manifest.py`。
 
 ## 11. 部分再生成
 

@@ -41,6 +41,7 @@ import { registerJobIpcHandlers } from "./ipc/jobs";
 import { registerProjectIpcHandlers } from "./ipc/projects";
 import { registerSourceIpcHandlers } from "./ipc/sources";
 import { registerVoiceIpcHandlers } from "./ipc/voice";
+import { registerVoiceProfileIpcHandlers } from "./ipc/voice_profiles";
 import { resolvePythonExecutable, WorkerManager, type ChildProcessLike, type WorkerRequestResult } from "./worker_manager";
 import {
   createApprovalGateCheckerAdapter,
@@ -50,6 +51,7 @@ import {
   createJobServiceAdapter,
   createProjectServiceAdapter,
   createSourceServiceAdapter,
+  createVoiceProfileServiceAdapter,
   createVoiceServiceAdapter,
 } from "./worker_service_adapters";
 
@@ -137,6 +139,7 @@ export async function runCompositionRoot(overrides: AppEntryOverrides = {}): Pro
     const jobService = createJobServiceAdapter(workerManager);
     const artifactService = createArtifactServiceAdapter(workerManager, dataRoot, shell);
     const voiceService = createVoiceServiceAdapter(workerManager);
+    const voiceProfileService = createVoiceProfileServiceAdapter(workerManager);
     const approvalGateChecker = createApprovalGateCheckerAdapter(workerManager);
 
     // すべてのIPC handlerを、実Electronの単一ipcMain上へ登録する(channel重複がないことは
@@ -148,6 +151,7 @@ export async function runCompositionRoot(overrides: AppEntryOverrides = {}): Pro
     registerJobIpcHandlers({ ipcMain, jobService });
     registerArtifactIpcHandlers({ ipcMain, artifactService });
     registerVoiceIpcHandlers({ ipcMain, voiceService });
+    registerVoiceProfileIpcHandlers({ ipcMain, voiceProfileService });
     registerFileDialogIpcHandlers({ ipcMain, dialog });
 
     const preloadPath = overrides.preloadPath ?? path.join(__dirname, "..", "preload", "index.js");

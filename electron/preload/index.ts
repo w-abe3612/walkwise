@@ -29,6 +29,11 @@ export const ALLOWED_CHANNELS = [
   "artifact:open-folder",
   "voice:list-engines",
   "voice:preview",
+  "voice-profile:create",
+  "voice-profile:list",
+  "voice-profile:get",
+  "voice-profile:update",
+  "voice-profile:archive",
   "dialog:select-source-file",
 ] as const;
 
@@ -77,6 +82,13 @@ export interface WalkwiseApi {
   readonly voice: {
     listEngines(): Promise<unknown>;
     preview(input: unknown): Promise<unknown>;
+  };
+  readonly voiceProfile: {
+    create(input: unknown): Promise<unknown>;
+    list(projectId: string): Promise<unknown>;
+    get(voiceProfileId: string): Promise<unknown>;
+    update(input: unknown): Promise<unknown>;
+    archive(voiceProfileId: string): Promise<unknown>;
   };
   readonly dialog: {
     /** main process側の`dialog.showOpenDialog()`を呼び出し、検証済みの絶対pathと推定
@@ -137,6 +149,13 @@ export function buildWalkwiseApi(ipc: IpcRendererLike | null | undefined): Walkw
     voice: {
       listEngines: () => rendererIpc.invoke("voice:list-engines"),
       preview: (input: unknown) => rendererIpc.invoke("voice:preview", input),
+    },
+    voiceProfile: {
+      create: (input: unknown) => rendererIpc.invoke("voice-profile:create", input),
+      list: (projectId: string) => rendererIpc.invoke("voice-profile:list", projectId),
+      get: (voiceProfileId: string) => rendererIpc.invoke("voice-profile:get", voiceProfileId),
+      update: (input: unknown) => rendererIpc.invoke("voice-profile:update", input),
+      archive: (voiceProfileId: string) => rendererIpc.invoke("voice-profile:archive", voiceProfileId),
     },
     dialog: {
       selectSourceFile: () => rendererIpc.invoke("dialog:select-source-file"),

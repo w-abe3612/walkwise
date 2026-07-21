@@ -137,6 +137,11 @@ describe("TASK-REVIEW-001 Electron composition root (app_entry.ts)", () => {
       "artifact:open-folder",
       "voice:list-engines",
       "voice:preview",
+      "voice-profile:create",
+      "voice-profile:list",
+      "voice-profile:get",
+      "voice-profile:update",
+      "voice-profile:archive",
       "dialog:select-source-file",
     ];
     for (const channel of expectedChannels) {

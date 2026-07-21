@@ -2,13 +2,14 @@
 spec_id: db-04-jobs-table
 title: "jobs テーブル"
 status: approved
-version: "1.0"
+version: "1.1"
 approved_at: "2026-07-19"
-last_updated: "2026-07-19"
+last_updated: "2026-07-22"
 spec_refs:
   - 00-database-overview.md
   - ../specifications/22-job-lifecycle-and-recovery.md
   - ../specifications/21-electron-python-worker-interface.md
+  - ../tasks/TASK-BUILD-EXEC-001-build-execution-pipeline-and-voice-profile-db.md
 ---
 
 # jobs テーブル
@@ -35,6 +36,9 @@ Job行内の最小列(`last_message`)、およびElectron mainのファイルロ
 | `last_message` | text | null | `null` | 直近の利用者向け進捗メッセージ |
 | `started_at` | text (ISO8601) | null | `null` | |
 | `finished_at` | text (ISO8601) | null | `null` | |
+| `error_code` | text | null | `null` | 失敗時の安定したerror code(例: `build_target_not_ready`)。TASK-BUILD-EXEC-001 12節 |
+| `error_stage` | text | null | `null` | 失敗したBuild実行段階(例: `validating_verified_scripts`)。11節の進捗段階名と一致させる |
+| `error_detail_json` | text | null | `null` | 失敗詳細のJSON文字列。秘密値・原稿全文・絶対pathを含めない |
 
 ## 3. PK/FK/unique/check/index
 
@@ -55,6 +59,10 @@ Job行内の最小列(`last_message`)、およびElectron mainのファイルロ
   Electron mainが更新する。
 - `parent_job_id`は、失敗Jobの再試行として新しいJobを作成する場合にのみ設定する
   (`22-job-lifecycle-and-recovery.md` 5.4節)。
+- `error_code`/`error_stage`/`error_detail_json`は、BuildExecutionOrchestratorが
+  `status`を`failed`へ遷移させる際に同時に記録する
+  (`script/services/jobs.py::JobService.fail`)。これら3列は失敗以外の状態では
+  `null`のままとする。
 
 ## 6. 正常例
 
@@ -80,6 +88,7 @@ Job行内の最小列(`last_message`)、およびElectron mainのファイルロ
 | 存在しない`build_request_id`を参照する行を挿入しようとする | FK制約違反として拒否する |
 | `status`が`cancelled`から直接`running`へ更新される | Application Service層で拒否する(`22`参照) |
 | アプリ強制終了で`status: running`のまま残る | 次回起動時のstale job検出により`failed`へ更新する |
+| 既に`succeeded`/`failed`/`cancelled`のJobを`failed`へ再遷移させようとする | Application Service層で拒否する(不正な状態遷移) |
 
 ## 8. migration時の注意
 
