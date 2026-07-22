@@ -18,8 +18,16 @@ import ProjectList from "./screens/ProjectList.vue";
 import ProjectWorkspace from "./screens/ProjectWorkspace.vue";
 import BuildSettings from "./screens/BuildSettings.vue";
 import JobsAndArtifacts from "./screens/JobsAndArtifacts.vue";
-import type { ApprovalItem, SourceItem } from "./screens/ProjectWorkspace.types";
-import type { EngineHealthView, OutputFormat, SpeakerOptionView } from "./screens/BuildSettings.types";
+import type {
+  ApprovalItem,
+  SourceItem,
+  VoiceEngineHealthView,
+  VoiceProfileFormInput,
+  VoiceProfileItem,
+  VoiceProfileStatus,
+  VoiceSpeakerOptionView,
+} from "./screens/ProjectWorkspace.types";
+import type { OutputFormat, VoiceProfileOptionView } from "./screens/BuildSettings.types";
 import type { ArtifactItem, JobItem } from "./screens/JobsAndArtifacts.types";
 
 interface WalkwiseApi {
@@ -44,6 +52,13 @@ interface WalkwiseApi {
   };
   readonly artifact: { list(projectId: string): Promise<unknown>; openFolder(artifactId: string): Promise<unknown> };
   readonly voice: { listEngines(): Promise<unknown>; preview(input: unknown): Promise<unknown> };
+  readonly voiceProfile: {
+    create(input: unknown): Promise<unknown>;
+    list(projectId: string): Promise<unknown>;
+    get(voiceProfileId: string): Promise<unknown>;
+    update(input: unknown): Promise<unknown>;
+    archive(voiceProfileId: string): Promise<unknown>;
+  };
   readonly dialog: { selectSourceFile(): Promise<unknown> };
 }
 
@@ -85,11 +100,14 @@ async function withLoading(fn: () => Promise<void>): Promise<void> {
   }
 }
 
-const workspace = reactive<{ sources: SourceItem[]; approvals: ApprovalItem[] }>({ sources: [], approvals: [] });
-const build = reactive<{ engineHealth: EngineHealthView | null; speakers: SpeakerOptionView[] }>({
-  engineHealth: null,
-  speakers: [],
-});
+const workspace = reactive<{
+  sources: SourceItem[];
+  approvals: ApprovalItem[];
+  voiceProfiles: VoiceProfileItem[];
+  voiceEngineHealth: VoiceEngineHealthView | null;
+  voiceSpeakers: VoiceSpeakerOptionView[];
+}>({ sources: [], approvals: [], voiceProfiles: [], voiceEngineHealth: null, voiceSpeakers: [] });
+const build = reactive<{ voiceProfiles: VoiceProfileOptionView[] }>({ voiceProfiles: [] });
 const jobsAndArtifacts = reactive<{ jobs: JobItem[]; artifacts: ArtifactItem[] }>({ jobs: [], artifacts: [] });
 
 function unwrapList<T>(result: unknown, key: string): T[] {
@@ -98,26 +116,34 @@ function unwrapList<T>(result: unknown, key: string): T[] {
   return (record?.[key] as T[] | undefined) ?? [];
 }
 
+/** Project WorkspaceのVoiceProfile一覧だけを再取得する(create/update/approve/archive後の反映用)。 */
+async function loadVoiceProfiles(projectId: string): Promise<void> {
+  const result = await walkwiseApi().voiceProfile.list(projectId);
+  workspace.voiceProfiles = unwrapList<VoiceProfileItem>(result, "voiceProfiles");
+}
+
 async function loadWorkspace(projectId: string): Promise<void> {
   await withLoading(async () => {
-    const [sourceResult, approvalResult] = await Promise.all([
+    const [sourceResult, approvalResult, voiceProfileResult, engineResult] = await Promise.all([
       walkwiseApi().source.list(projectId),
       walkwiseApi().approval.list(projectId),
+      walkwiseApi().voiceProfile.list(projectId),
+      walkwiseApi().voice.listEngines(),
     ]);
     workspace.sources = unwrapList<SourceItem>(sourceResult, "sources");
     workspace.approvals = unwrapList<ApprovalItem>(approvalResult, "approvals");
+    workspace.voiceProfiles = unwrapList<VoiceProfileItem>(voiceProfileResult, "voiceProfiles");
+    const engines = engineResult as { health: VoiceEngineHealthView; speakers: VoiceSpeakerOptionView[] };
+    workspace.voiceEngineHealth = engines.health;
+    workspace.voiceSpeakers = engines.speakers;
   });
 }
 
-async function loadBuildSettings(): Promise<void> {
-  build.engineHealth = null;
+/** Build Settingsでは、このProjectのVoiceProfile一覧(approved絞り込みはBuildSettings.vue側で行う)だけを読み込む。 */
+async function loadBuildSettings(projectId: string): Promise<void> {
   await withLoading(async () => {
-    const result = (await walkwiseApi().voice.listEngines()) as {
-      health: EngineHealthView;
-      speakers: SpeakerOptionView[];
-    };
-    build.engineHealth = result.health;
-    build.speakers = result.speakers;
+    const result = await walkwiseApi().voiceProfile.list(projectId);
+    build.voiceProfiles = unwrapList<VoiceProfileOptionView>(result, "voiceProfiles");
   });
 }
 
@@ -137,7 +163,7 @@ watch(
   ([screen, projectId]) => {
     if (!projectId) return;
     if (screen === "project-workspace") void loadWorkspace(projectId);
-    else if (screen === "build-settings") void loadBuildSettings();
+    else if (screen === "build-settings") void loadBuildSettings(projectId);
     else if (screen === "jobs" || screen === "artifacts") void loadJobsAndArtifacts(projectId);
   },
   { immediate: true },
@@ -183,13 +209,39 @@ async function selectSourceFile(): Promise<{ filePath: string; mediaType: string
   return (await walkwiseApi().dialog.selectSourceFile()) as { filePath: string; mediaType: string } | null;
 }
 
-// --- BuildSettings wiring ---
-async function previewVoice(speakerId: string, text: string): Promise<void> {
+// --- ProjectWorkspace VoiceProfile wiring ---
+// create/updateはmodal側で局所的にerrorを表示できるよう、あえてwithLoading()で
+// 包まない(失敗してもmodalの入力内容を保持したまま呼び出し元がcatchできるようにする)。
+async function createVoiceProfile(input: VoiceProfileFormInput): Promise<void> {
+  if (!navigation.projectId) throw new Error("Project文脈がありません");
+  await walkwiseApi().voiceProfile.create({ projectId: navigation.projectId, ...input });
+  await loadVoiceProfiles(navigation.projectId);
+}
+
+async function updateVoiceProfile(
+  voiceProfileId: string,
+  input: Partial<VoiceProfileFormInput> & { status?: VoiceProfileStatus },
+): Promise<void> {
+  if (!navigation.projectId) throw new Error("Project文脈がありません");
+  await walkwiseApi().voiceProfile.update({ voiceProfileId, ...input });
+  await loadVoiceProfiles(navigation.projectId);
+}
+
+async function approveVoiceProfile(voiceProfileId: string): Promise<void> {
   await withLoading(async () => {
-    await walkwiseApi().voice.preview({ speakerId, text });
+    await walkwiseApi().voiceProfile.update({ voiceProfileId, status: "approved" });
+    if (navigation.projectId) await loadVoiceProfiles(navigation.projectId);
   });
 }
 
+async function archiveVoiceProfile(voiceProfileId: string): Promise<void> {
+  await withLoading(async () => {
+    await walkwiseApi().voiceProfile.archive(voiceProfileId);
+    if (navigation.projectId) await loadVoiceProfiles(navigation.projectId);
+  });
+}
+
+// --- BuildSettings wiring ---
 async function createBuildRequest(input: { outputFormats: OutputFormat[]; voiceProfileId?: string }): Promise<unknown> {
   if (!navigation.projectId) throw new Error("Project文脈がありません");
   return walkwiseApi().buildRequest.create({ projectId: navigation.projectId, ...input });
@@ -246,13 +298,18 @@ defineExpose({ navigate, handleOpenProject, NAVIGATION_SCREENS });
       :approve="approveGate"
       :request-changes="requestChangesForGate"
       :select-source-file="selectSourceFile"
+      :voice-profiles="workspace.voiceProfiles"
+      :voice-engine-health="workspace.voiceEngineHealth"
+      :voice-speakers="workspace.voiceSpeakers"
+      :create-voice-profile="createVoiceProfile"
+      :update-voice-profile="updateVoiceProfile"
+      :approve-voice-profile="approveVoiceProfile"
+      :archive-voice-profile="archiveVoiceProfile"
     />
 
     <BuildSettings
       v-else-if="currentScreen === 'build-settings'"
-      :engine-health="build.engineHealth"
-      :speakers="build.speakers"
-      :preview="previewVoice"
+      :voice-profiles="build.voiceProfiles"
       :create-build-request="createBuildRequest"
       :start-job="startJob"
     />

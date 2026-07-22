@@ -1,8 +1,8 @@
 ---
 document_type: claude_code_task_index
 status: review
-version: "2.0"
-last_updated: "2026-07-20"
+version: "2.1"
+last_updated: "2026-07-22"
 ---
 
 # Claude Code実行タスク一覧
@@ -21,6 +21,8 @@ last_updated: "2026-07-20"
 |---|---|---|
 | [`TASK-COEIR-001`](TASK-COEIR-001-coeiroink-client-adapter.md) | COEIROINK adapter | **永久blocked** — 公式API世代・endpoint・話者識別子・利用条件が確認できるまで実装しない |
 | [`TASK-REVIEW-001`](TASK-REVIEW-001-runtime-integration-and-repository-cleanup.md) | 実行時統合とリポジトリ整理 | 実行中(人間承認による完了判定待ち。本file自体は人間承認前に削除しない) |
+| [`TASK-BUILD-EXEC-001`](TASK-BUILD-EXEC-001-build-execution-pipeline-and-voice-profile-db.md) | Build実行パイプラインとVoiceProfile DB | 完了(2026-07-22。詳細は`docs/notes/progress.md`) |
+| [`TASK-VOICE-PROFILE-UI-001`](TASK-VOICE-PROFILE-UI-001-project-voice-profile-management-and-build-selection.md) | Project VoiceProfile管理とBuild選択 | 完了(2026-07-22。詳細は`docs/notes/progress.md`) |
 
 ## 削除済みタスク(参考、実装完了)
 

@@ -2327,3 +2327,55 @@ Python側regression: 498 passed, 23 skipped(既定opt-in), 3 deselected
 (すべてTASK-COEIR-001), 0 failed。TypeScript/Vitest: 110 passed, 3 skipped
 (既定opt-in), 0 failed。`npx tsc --noEmit`成功。`TASK-COEIR-001`は
 今回も一貫して永久blockedのまま(実装・接続一切なし)。
+
+## TASK-VOICE-PROFILE-UI-001: Build SettingsへのVoiceProfile選択・管理導線(2026-07-22完了)
+
+上記「未解決・人間承認が必要な項目」で報告したBuild Settings画面とVoiceProfile
+選択導線の不整合を、人間承認済みUI仕様に基づき実装した。承認プロセス:
+
+1. まず`docs/spec-proposals/build-settings-voice-profile-ui.md`として、
+   コード変更なしの調査・3案比較(案A: Build Settings内で完結、案B: Project
+   単位で分離管理、案C: 選択+modal)・推奨案・人間判断事項の一覧を提案した。
+2. 人間が次を承認: VoiceProfile管理場所はProject Workspace(第6画面は追加
+   しない)、承認済みProfile編集後もapprovedを維持、Build画面からの新規作成は
+   不可、旧speaker/style直接選択UIは削除、VoiceProfile未作成時はtext-only
+   Buildのみ許可、text-only時はVoiceProfile欄をdisabledグレー表示、Profile
+   複製はMVPで実装しない。
+3. 承認内容に基づき実装した。
+
+実装内容:
+
+- **Project Workspace**(`docs/screens/02-project-workspace-and-source-import.md`
+  v1.2、`electron/renderer/screens/ProjectWorkspace.vue`): 「音声設定」section
+  (第6画面ではなく既存画面へ統合)。VoiceProfile一覧(status日本語表示、
+  speaker表示名優先)、新規作成・編集modal(role="dialog"、aria-modal、
+  Escape close、focus trap、初期focus)、承認(draft→approved、二重送信防止)、
+  archive(JobsAndArtifacts.vueのcancel確認と同じ二段階確認方式、物理削除なし)。
+- **Build Settings**(`docs/screens/03-build-settings.md` v1.2、
+  `electron/renderer/screens/BuildSettings.vue`): 旧来のVOICEVOX speaker/style
+  直接選択・speedスライダー・試聴機能を削除し、このProjectのapproved
+  VoiceProfileを1件選択するだけの画面へ変更した。旧実装の不整合(生の
+  speaker_idを`voiceProfileId`としてそのまま送信していた問題)を是正した。
+  選択中Profileがarchive等で無効化された場合、選択を解除し利用者向け通知を
+  表示する。
+- **共有error mapping**(`electron/renderer/voiceProfileErrors.ts`):
+  backendの安定したerror code(`voice_profile_required`等)を利用者向け
+  日本語messageへ変換する処理を、両画面から重複実装せず共有した。
+- **electron main IPC/adapter拡張**: 前task(`TASK-BUILD-EXEC-001`)で追加した
+  `electron/main/ipc/voice_profiles.ts`/`worker_service_adapters.ts`が
+  pause設定(`sentence_pause_ms`等)・`settings_json`・(updateのみ)
+  `engine`/`speaker_id`/`style_id`を欠落させていたgapを埋めた(Python
+  Worker側`script/worker/commands.py`は当時から対応済みだった)。
+
+Renderer実装は完了したが、次は今回も実装せず報告する(実runtime確認・外部
+接続を要するため): 実GUI目視確認(この開発環境にディスプレイなし)、実
+VOICEVOX Engineへの接続確認。いずれもTASK-REVIEW-001時点から状態変化なし。
+
+regression: Python 498 passed / 0 failed(Renderer中心の変更のため対象外だが、
+`git diff -- script tests`が空であることを確認済み)。TypeScript/Vitest
+128 passed, 3 skipped(既定opt-in), 0 failed(21 test files、17件新規
+ProjectWorkspace test + 7件accessibility test追加を含む)。`npm run build`
+成功。Markdown link check: 0 broken(172 files, 320 links。自分の新規
+proposal fileが`docs/tasks/TASK-BUILD-EXEC-001-...md`への相対path形式の
+参照を含んでいたため、既存の`test_no_dangling_references_to_deleted_task_and_proposal_paths`
+testを一時的に落としていたことを発見・是正した)。

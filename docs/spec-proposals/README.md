@@ -1,7 +1,7 @@
 ---
 status: active
-version: "3.0"
-last_updated: "2026-07-19"
+version: "3.1"
+last_updated: "2026-07-22"
 ---
 
 # 仕様提案・仕様策定タスク
@@ -75,6 +75,12 @@ docs/specifications/image-material-ingestion.md
 
 次のテーマは、資料入力パイプラインの下位仕様として承認済み仕様へ昇格済みであり、
 本ディレクトリには重複して残していない。
+
+[`build-settings-voice-profile-ui.md`](build-settings-voice-profile-ui.md)は例外として、
+`status: approved`(2026-07-22、`TASK-VOICE-PROFILE-UI-001`)へ更新した上で本ディレクトリに
+残している(明示的な人間指示による)。承認内容自体は`docs/screens/02-project-workspace-and-source-import.md`
+(音声設定section)・`docs/screens/03-build-settings.md`(VoiceProfile選択)へ実装・反映済みであり、
+本fileは検討過程(案A/B/C比較、推奨理由)の記録として保持する。
 
 - 資料入力パイプラインの責務と境界 → `docs/specifications/material-input-pipeline.md`
 - 資料保存構成と共通資料スキーマ → `docs/specifications/source-storage-and-common-schema.md`

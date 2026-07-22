@@ -1,10 +1,10 @@
 ---
 document_type: preparation_state
 status: in_progress
-version: "11.0"
+version: "12.0"
 last_updated: "2026-07-22"
 current_state_verified: "2026-07-22"
-verified_by: "TASK-BUILD-EXEC-001 build execution pipeline and voice profile DB implementation"
+verified_by: "TASK-VOICE-PROFILE-UI-001 project voice profile management and build selection"
 ---
 
 # 実装準備状態(実測)
@@ -47,17 +47,51 @@ Worker command5件、JobService lifecycle5件。TypeScript/Vitest側は
 electron main(`voice_profile:*` IPC・adapter)を追加し、全体110 passed,
 3 skipped(既定opt-in)、0 failed(2026-07-22実測)。
 
-**未解決・人間承認が必要な項目(実装せず報告)**:
+この時点での「未解決・人間承認が必要な項目」(Build Settings画面のVoiceProfile
+選択導線の不整合)は、`TASK-VOICE-PROFILE-UI-001`(下記節)で解決済みである。
 
-- **Build Settings画面(`docs/screens/03-build-settings.md`)とVoiceProfile
-  選択導線の不整合**: 現行の承認済み画面仕様は、VOICEVOXのspeaker/style一覧
-  (`voice:list-engines`)から都度選択するモデルを前提としており、
-  Project単位で事前登録・承認するVoiceProfile(本task)を選択する導線を
-  一切定義していない。Electron main側の`voice_profile:*` IPC・adapter・
-  Worker commandは実装・テスト済みだが、Rendererの`BuildSettings.vue`は
-  意図的に変更していない(画面のUI/UX刷新は人間承認が必要な範囲のため)。
-  詳細は本書末尾の完了report、または`docs/tasks/`配下のTASK-BUILD-EXEC-001
-  完了reportを参照。
+## TASK-VOICE-PROFILE-UI-001実装後の実測(2026-07-22)
+
+上記で未解決事項として報告した「Build Settings画面とVoiceProfile選択導線の
+不整合」を、人間承認済みUI仕様(`docs/spec-proposals/build-settings-voice-profile-ui.md`、
+2026-07-22承認)に基づき実装した。承認内容: VoiceProfile管理場所はProject
+Workspace(第6画面は追加しない)、承認済みProfile編集後もapprovedを維持、
+Build画面からの新規作成は不可、旧speaker/style直接選択UIは削除、VoiceProfile
+未作成時はtext-only Buildのみ許可、text-only時はVoiceProfile欄をdisabled
+グレー表示、Profile複製はMVP対象外。
+
+- **Project Workspace**(`docs/screens/02-project-workspace-and-source-import.md`
+  v1.2): 「音声設定」sectionを追加し、VoiceProfile一覧・新規作成/編集modal・
+  承認(draft→approved)・archive(確認付き、物理削除ではない)を実装した。
+- **Build Settings**(`docs/screens/03-build-settings.md` v1.2): 旧来の
+  speaker/style直接選択・speedスライダー・試聴機能を削除し、このProjectの
+  approved VoiceProfileを1件選択するだけの画面へ変更した。旧実装の不整合
+  (生のspeaker_idを`voiceProfileId`としてそのまま送信していた問題)も
+  是正した。
+- **共有error mapping**: `electron/renderer/voiceProfileErrors.ts`で、
+  backendの安定したerror codeを利用者向け日本語messageへ変換する処理を
+  両画面から共有した。
+- **electron main IPC/adapter拡張**: `electron/main/ipc/voice_profiles.ts`/
+  `worker_service_adapters.ts`に、create/update時のpause設定
+  (`sentence_pause_ms`等)・`settings_json`・(updateのみ)`engine`/
+  `speaker_id`/`style_id`が欠落していたgapを埋めた(Python Worker側は
+  TASK-BUILD-EXEC-001の時点で既に対応済みだった)。
+
+**実測(2026-07-22)**: Python **498 passed, 23 skipped(既定opt-in),
+3 deselected(Docker daemon未起動、環境要因), 10 xfailed(TASK-COEIR-001),
+0 failed**。TypeScript: `npm run typecheck`成功(エラーなし)。Vitest
+**128 passed, 3 skipped(既定opt-in), 0 failed**(21 test files)。
+`npm run build`成功。Markdown link check: `0 broken`(172 files, 320 links)。
+
+- **Renderer VoiceProfile UI**: complete(Project Workspaceでの作成・編集・
+  承認・archive、Build Settingsでのapproved選択、いずれも実装・テスト済み)。
+- **実GUI目視確認**: 未確認(この開発環境にディスプレイなし。TASK-REVIEW-001時点から状態変化なし)。
+- **外部VOICEVOX実接続**: 未確認(VoiceProfile作成・編集modalのspeaker/style候補は
+  `voice:list-engines`経由で取得する設計だが、実VOICEVOX Engineへの接続はこの
+  開発環境で未確認)。
+- **release ready**: 依然として「いいえ」(実GUI起動・外部runtime疎通・
+  Windowsインストーラーの実インストールが未確認のため。上記のRenderer
+  VoiceProfile UI自体の完了とは別軸の判定)。
 
 以前の節(以下)は`2026-07-20`時点の実測であり、TASK-BUILD-EXEC-001による
 上記追加を反映していない。

@@ -103,6 +103,12 @@ function toVoiceProfileSummary(raw: Raw): VoiceProfileSummary {
     pitchScale: raw.pitch_scale as number,
     intonationScale: raw.intonation_scale as number,
     volumeScale: raw.volume_scale as number,
+    sentencePauseMs: raw.sentence_pause_ms as number,
+    paragraphPauseMs: raw.paragraph_pause_ms as number,
+    sectionPauseMs: raw.section_pause_ms as number,
+    chapterPauseMs: raw.chapter_pause_ms as number,
+    settingsJson: raw.settings_json as string,
+    updatedAt: (raw.updated_at as string | null) ?? undefined,
   };
 }
 
@@ -356,6 +362,11 @@ export function createVoiceProfileServiceAdapter(manager: WorkerManager): VoiceP
         pitch_scale: input.pitchScale,
         intonation_scale: input.intonationScale,
         volume_scale: input.volumeScale,
+        sentence_pause_ms: input.sentencePauseMs,
+        paragraph_pause_ms: input.paragraphPauseMs,
+        section_pause_ms: input.sectionPauseMs,
+        chapter_pause_ms: input.chapterPauseMs,
+        settings_json: input.settingsJson,
       });
       return toVoiceProfileSummary(result.voice_profile as Raw);
     },
@@ -371,10 +382,18 @@ export function createVoiceProfileServiceAdapter(manager: WorkerManager): VoiceP
       const result = await workerResult(manager, "voice_profile.update", {
         voice_profile_id: input.voiceProfileId,
         name: input.name,
+        engine: input.engine,
+        speaker_id: input.speakerId,
+        style_id: input.styleId,
         speed_scale: input.speedScale,
         pitch_scale: input.pitchScale,
         intonation_scale: input.intonationScale,
         volume_scale: input.volumeScale,
+        sentence_pause_ms: input.sentencePauseMs,
+        paragraph_pause_ms: input.paragraphPauseMs,
+        section_pause_ms: input.sectionPauseMs,
+        chapter_pause_ms: input.chapterPauseMs,
+        settings_json: input.settingsJson,
         status: input.status,
       });
       return toVoiceProfileSummary(result.voice_profile as Raw);

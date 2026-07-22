@@ -2085,3 +2085,42 @@ last_updated: "2026-07-22"
   `SegmentSynthesizer`のpart file命名を修正したうえで、Build Execution
   Orchestratorから利用するように切り替える(既存のcaching機能も
   合わせて活用できる)。
+
+## TASK-VOICE-PROFILE-UI-001: 試聴機能(voice:preview)をVoiceProfile modalへ引き継がなかった
+
+- 対象: `electron/renderer/screens/BuildSettings.vue`(削除)、
+  `electron/renderer/screens/ProjectWorkspace.vue`(新設したVoiceProfile
+  modalへは配線せず)
+- 仮定: 旧`BuildSettings.vue`の試聴ボタンは、生のspeaker_id + 任意の
+  サンプルテキストを`voice:preview`へ渡す実装だった。旧speaker/style直接
+  選択UIを削除した結果、この試聴機能の自然な呼び出し元がなくなった。
+- 判断: `voice:preview` IPC自体(`electron/main/ipc/voice.ts`)は変更・削除
+  せず、単に呼び出し元を配線しないままにした。VoiceProfile作成・編集modal
+  へ試聴ボタンを追加することも検討したが、今回の承認済み実装対象(§4
+  「実装範囲」)にも完了条件(§26)にも試聴機能への言及がなく、追加すると
+  未承認のスコープ拡張になるため見送った。
+- 根拠: `voice:preview`は既存のtested・動作するcapabilityであり、削除すると
+  将来必要になった際の手戻りが大きい。呼び出し元を配線しないだけなら
+  安全側(害がない)であり、「不要な複雑さを増やさない」という方針と
+  「既存動作するコードを推測で消さない」という方針の両方に合致する。
+- 置き換え条件: 将来、VoiceProfile作成・編集modalに試聴ボタンを追加する
+  正式な要求が生じた場合、`voice:preview`をそのProfileの`speakerId`/
+  `styleId`/parameters値で呼び出す形で配線する(新しいIPC設計は不要)。
+
+## TASK-VOICE-PROFILE-UI-001: `wrapper.setProps()`の型付けがVue componentの実プロパティ型を認識しない
+
+- 対象: `electron/renderer/tests/BuildSettings.test.ts`
+- 仮定: `electron/env.d.ts`の`declare module "*.vue" { const component: unknown; }`
+  shimにより、plain `tsc`は`.vue`コンポーネントの実際のprops型を認識できない
+  (本プロジェクトの既存の制約、`ProjectWorkspace.types.ts`のコメント参照)。
+  `mount(Component, { props: {...} })`呼び出し自体は緩い型で通るが、
+  `wrapper.setProps({...})`は`VNodeProps`相当の基底属性しか認識せず、
+  カスタムpropsを渡すと型エラーになる。
+- 判断: `any`を使わず、`wrapper.setProps.bind(wrapper) as (props: Record<string,
+  unknown>) => Promise<void>`という、`unknown`経由の局所的なcastで対応した。
+  これはこのテストの1箇所だけであり(既存コードに`setProps`の使用前例がない)、
+  型安全性を損なう範囲を最小限にしている。
+- 根拠: 「境界でunknownを使いvalidationする」方針に沿った最小限の妥協であり、
+  `any`によるコード全体の型安全性低下は避けた。
+- 置き換え条件: 将来、`.vue`ファイルの型付けを`vue-tsc`等の専用type checkerへ
+  移行するタイミングで、この局所castは不要になる。

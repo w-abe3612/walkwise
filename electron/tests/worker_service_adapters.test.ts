@@ -316,31 +316,49 @@ describe("TASK-REVIEW-001 Worker service adapters", () => {
       pitch_scale: 0.0,
       intonation_scale: 1.0,
       volume_scale: 1.0,
+      sentence_pause_ms: 250,
+      paragraph_pause_ms: 600,
+      section_pause_ms: 1000,
+      chapter_pause_ms: 1500,
+      settings_json: "{}",
+      updated_at: "2026-07-22T00:00:00+09:00",
       ...overrides,
     });
 
     const manager = fakeWorkerManager({
-      "voice_profile.create": (params) => ({ voice_profile: record({ project_id: params.project_id, name: params.name }) }),
+      "voice_profile.create": (params) => ({
+        voice_profile: record({
+          project_id: params.project_id, name: params.name, paragraph_pause_ms: params.paragraph_pause_ms,
+        }),
+      }),
       "voice_profile.list": () => ({ voice_profiles: [record()] }),
       "voice_profile.get": () => ({ voice_profile: record() }),
-      "voice_profile.update": () => ({ voice_profile: record({ status: "approved" }) }),
+      "voice_profile.update": (params) => ({
+        voice_profile: record({ status: "approved", speaker_id: params.speaker_id ?? "3" }),
+      }),
       "voice_profile.archive": () => ({ voice_profile: record({ status: "archived" }) }),
     });
     const adapter = createVoiceProfileServiceAdapter(manager);
 
-    const created = await adapter.create({ projectId: "proj-1", name: "ナレーター1", engine: "voicevox", speakerId: "3" });
+    const created = await adapter.create({
+      projectId: "proj-1", name: "ナレーター1", engine: "voicevox", speakerId: "3", paragraphPauseMs: 800,
+    });
     expect(created.voiceProfileId).toBe("vp-1");
     expect(created.name).toBe("ナレーター1");
+    expect(created.paragraphPauseMs).toBe(800);
+    expect(created.settingsJson).toBe("{}");
 
     const list = await adapter.list("proj-1");
     expect(list).toHaveLength(1);
     expect(list[0].status).toBe("draft");
+    expect(list[0].sentencePauseMs).toBe(250);
 
     const got = await adapter.get("vp-1");
     expect(got.speakerId).toBe("3");
 
-    const updated = await adapter.update({ voiceProfileId: "vp-1", status: "approved" });
+    const updated = await adapter.update({ voiceProfileId: "vp-1", status: "approved", speakerId: "8" });
     expect(updated.status).toBe("approved");
+    expect(updated.speakerId).toBe("8");
 
     const archived = await adapter.archive("vp-1");
     expect(archived.status).toBe("archived");

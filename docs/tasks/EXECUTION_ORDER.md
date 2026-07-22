@@ -1,8 +1,8 @@
 ---
 document_type: claude_code_execution_order
 status: review
-version: "2.0"
-last_updated: "2026-07-20"
+version: "2.1"
+last_updated: "2026-07-22"
 ---
 
 # 実装順序と依存関係
@@ -19,3 +19,7 @@ last_updated: "2026-07-20"
 - [`TASK-REVIEW-001`](TASK-REVIEW-001-runtime-integration-and-repository-cleanup.md) —
   実行中。依存: 完了済み全53タスク(実行時統合対象のcomposition root・
   Worker registry・IPC adapter・Renderer root等はすべてそれらタスクの成果物を再利用する)。
+- [`TASK-BUILD-EXEC-001`](TASK-BUILD-EXEC-001-build-execution-pipeline-and-voice-profile-db.md) —
+  完了(2026-07-22)。依存: `TASK-REVIEW-001`。
+- [`TASK-VOICE-PROFILE-UI-001`](TASK-VOICE-PROFILE-UI-001-project-voice-profile-management-and-build-selection.md) —
+  完了(2026-07-22)。依存: `TASK-BUILD-EXEC-001`。

@@ -5,6 +5,12 @@
  * preview delegation, MVP-excluded features, re-execution determinism.
  * Contract: docs/test-cases/TASK-UI-003-build-settings-and-voice-preview-screen.md
  * Release scope: MVP.
+ *
+ * TASK-VOICE-PROFILE-UI-001: BuildSettings.vueは旧来のVOICEVOX speaker/style直接選択
+ * (`engineHealth`/`speakers`/`preview`)を削除し、Project単位のapproved VoiceProfileを
+ * 選択するだけになった。この画面がmountするtestは新しいprops形状へ更新した
+ * (`voice:list-engines`/`voice:preview`自体のIPC handler testは変更なし、
+ * 別concept)。
  */
 
 import { mount } from "@vue/test-utils";
@@ -26,9 +32,7 @@ function fakeIpcMain(): { ipcMain: IpcMainLike; handlers: Map<string, (...args: 
 
 function baseProps(overrides: Record<string, unknown> = {}) {
   return {
-    engineHealth: { available: true },
-    speakers: [],
-    preview: vi.fn(),
+    voiceProfiles: [],
     createBuildRequest: vi.fn(),
     startJob: vi.fn(),
     ...overrides,
@@ -41,24 +45,27 @@ describe("TASK-UI-003 出力・声設定・試聴画面", () => {
 
     await wrapper.get('[data-testid="format-text"]').trigger("change");
 
-    expect((wrapper.get('[data-testid="speaker-select"]').element as HTMLSelectElement).disabled).toBe(true);
-    expect((wrapper.get('[data-testid="speed-slider"]').element as HTMLInputElement).disabled).toBe(true);
-    expect((wrapper.get('[data-testid="preview-button"]').element as HTMLButtonElement).disabled).toBe(true);
+    expect((wrapper.get('[data-testid="voice-profile-select"]').element as HTMLSelectElement).disabled).toBe(true);
     expect((wrapper.get('[data-testid="submit-button"]').element as HTMLButtonElement).disabled).toBe(false);
   });
 
-  test("TC-UI-003-03: VOICEVOX疎通 [integration_mock/P0]", async () => {
+  test("TC-UI-003-03: approved VoiceProfileが0件ならMP3を開始できない [integration_mock/P0]", async () => {
     const createBuildRequest = vi.fn();
     const startJob = vi.fn();
     const wrapper = mount(BuildSettings, {
-      props: baseProps({ engineHealth: { available: false, detail: "connection refused" }, createBuildRequest, startJob }),
+      props: baseProps({
+        voiceProfiles: [{ voiceProfileId: "vp-draft", name: "下書き中", status: "draft" }],
+        createBuildRequest,
+        startJob,
+      }),
     });
 
-    expect(wrapper.find('[data-testid="engine-error"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="engine-retry"]').exists()).toBe(true);
-    // engine未接続の間はvoice controlsが常にdisabled(MP3を選んでも試聴・音声制御を使えない)
     await wrapper.get('[data-testid="format-mp3"]').trigger("change");
-    expect((wrapper.get('[data-testid="speaker-select"]').element as HTMLSelectElement).disabled).toBe(true);
+
+    // draftはapproved一覧に出ないため選択できず、送信もdisabledのまま
+    expect(wrapper.find('option[value="vp-draft"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="voice-profile-none-available"]').exists()).toBe(true);
+    expect((wrapper.get('[data-testid="submit-button"]').element as HTMLButtonElement).disabled).toBe(true);
     expect(createBuildRequest).not.toHaveBeenCalled();
     expect(startJob).not.toHaveBeenCalled();
   });
@@ -81,7 +88,7 @@ describe("TASK-UI-003 出力・声設定・試聴画面", () => {
 
   test("TC-UI-003-07: MVP外機能非表示 [unit/P1]", () => {
     const wrapper = mount(BuildSettings, {
-      props: baseProps({ speakers: [{ speakerId: "1", displayName: "四国めたん" }] }),
+      props: baseProps({ voiceProfiles: [{ voiceProfileId: "vp-1", name: "ナレーター1", status: "approved" }] }),
     });
 
     const text = wrapper.text();
@@ -96,7 +103,7 @@ describe("TASK-UI-003 出力・声設定・試聴画面", () => {
   test("TC-REVIEW-001-09: approvalGateChecker未注入はfail-closed(default-allowにならない) [unit/P0]", () => {
     // TASK-REVIEW-001 禁止事項: 承認gateのcheckerが注入されていない場合、
     // job:startをapproved扱いにしてはならない。buildServiceは正常に注入された状態でも、
-    // approvalGateCheckerだけが欠落していれば登録自体が失敗し、handlerは1つも登録されない
+    // approvalGateChecker だけが欠落していれば登録自体が失敗し、handlerは1つも登録されない
     // (=job:startを一切呼び出せない、真にfail-closedな状態)。
     const { ipcMain } = fakeIpcMain();
     const buildService: BuildServiceLike = { createBuildRequest: vi.fn(), startJob: vi.fn() };

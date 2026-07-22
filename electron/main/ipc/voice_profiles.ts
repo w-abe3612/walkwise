@@ -26,6 +26,12 @@ export interface VoiceProfileSummary {
   readonly pitchScale: number;
   readonly intonationScale: number;
   readonly volumeScale: number;
+  readonly sentencePauseMs: number;
+  readonly paragraphPauseMs: number;
+  readonly sectionPauseMs: number;
+  readonly chapterPauseMs: number;
+  readonly settingsJson: string;
+  readonly updatedAt?: string;
 }
 
 export interface CreateVoiceProfileInput {
@@ -38,15 +44,28 @@ export interface CreateVoiceProfileInput {
   readonly pitchScale?: number;
   readonly intonationScale?: number;
   readonly volumeScale?: number;
+  readonly sentencePauseMs?: number;
+  readonly paragraphPauseMs?: number;
+  readonly sectionPauseMs?: number;
+  readonly chapterPauseMs?: number;
+  readonly settingsJson?: string;
 }
 
 export interface UpdateVoiceProfileInput {
   readonly voiceProfileId: string;
   readonly name?: string;
+  readonly engine?: string;
+  readonly speakerId?: string;
+  readonly styleId?: string;
   readonly speedScale?: number;
   readonly pitchScale?: number;
   readonly intonationScale?: number;
   readonly volumeScale?: number;
+  readonly sentencePauseMs?: number;
+  readonly paragraphPauseMs?: number;
+  readonly sectionPauseMs?: number;
+  readonly chapterPauseMs?: number;
+  readonly settingsJson?: string;
   readonly status?: string;
 }
 
@@ -93,6 +112,20 @@ function optionalNumber(raw: unknown, fieldName: string): number | undefined {
   return raw;
 }
 
+function optionalString(raw: unknown, fieldName: string): string | undefined {
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+  if (typeof raw !== "string") {
+    throw new VoiceProfileValidationError("validation_error", `${fieldName} must be a string`);
+  }
+  return raw;
+}
+
+function optionalNonEmptyString(raw: unknown): string | undefined {
+  return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+}
+
 function validateCreateInput(raw: unknown): CreateVoiceProfileInput {
   if (!raw || typeof raw !== "object") {
     throw new VoiceProfileValidationError("validation_error", "input must be an object");
@@ -103,11 +136,16 @@ function validateCreateInput(raw: unknown): CreateVoiceProfileInput {
     name: requireNonEmptyString(input.name, "name"),
     engine: requireNonEmptyString(input.engine, "engine"),
     speakerId: requireNonEmptyString(input.speakerId, "speakerId"),
-    styleId: typeof input.styleId === "string" && input.styleId.trim() ? input.styleId.trim() : undefined,
+    styleId: optionalNonEmptyString(input.styleId),
     speedScale: optionalNumber(input.speedScale, "speedScale"),
     pitchScale: optionalNumber(input.pitchScale, "pitchScale"),
     intonationScale: optionalNumber(input.intonationScale, "intonationScale"),
     volumeScale: optionalNumber(input.volumeScale, "volumeScale"),
+    sentencePauseMs: optionalNumber(input.sentencePauseMs, "sentencePauseMs"),
+    paragraphPauseMs: optionalNumber(input.paragraphPauseMs, "paragraphPauseMs"),
+    sectionPauseMs: optionalNumber(input.sectionPauseMs, "sectionPauseMs"),
+    chapterPauseMs: optionalNumber(input.chapterPauseMs, "chapterPauseMs"),
+    settingsJson: optionalString(input.settingsJson, "settingsJson"),
   };
 }
 
@@ -122,11 +160,19 @@ function validateUpdateInput(raw: unknown): UpdateVoiceProfileInput {
   }
   return {
     voiceProfileId: requireNonEmptyString(input.voiceProfileId, "voiceProfileId"),
-    name: typeof input.name === "string" && input.name.trim() ? input.name.trim() : undefined,
+    name: optionalNonEmptyString(input.name),
+    engine: optionalNonEmptyString(input.engine),
+    speakerId: optionalNonEmptyString(input.speakerId),
+    styleId: optionalNonEmptyString(input.styleId),
     speedScale: optionalNumber(input.speedScale, "speedScale"),
     pitchScale: optionalNumber(input.pitchScale, "pitchScale"),
     intonationScale: optionalNumber(input.intonationScale, "intonationScale"),
     volumeScale: optionalNumber(input.volumeScale, "volumeScale"),
+    sentencePauseMs: optionalNumber(input.sentencePauseMs, "sentencePauseMs"),
+    paragraphPauseMs: optionalNumber(input.paragraphPauseMs, "paragraphPauseMs"),
+    sectionPauseMs: optionalNumber(input.sectionPauseMs, "sectionPauseMs"),
+    chapterPauseMs: optionalNumber(input.chapterPauseMs, "chapterPauseMs"),
+    settingsJson: optionalString(input.settingsJson, "settingsJson"),
     status: status as string | undefined,
   };
 }

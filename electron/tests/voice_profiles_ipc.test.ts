@@ -33,6 +33,11 @@ const SAMPLE: VoiceProfileSummary = {
   pitchScale: 0.0,
   intonationScale: 1.0,
   volumeScale: 1.0,
+  sentencePauseMs: 250,
+  paragraphPauseMs: 600,
+  sectionPauseMs: 1000,
+  chapterPauseMs: 1500,
+  settingsJson: "{}",
 };
 
 describe("TASK-BUILD-EXEC-001 voice-profile IPC handlers", () => {
@@ -48,10 +53,19 @@ describe("TASK-BUILD-EXEC-001 voice-profile IPC handlers", () => {
     registerVoiceProfileIpcHandlers({ ipcMain, voiceProfileService });
 
     const createHandler = handlers.get("voice-profile:create")!;
-    const result = await createHandler({}, { projectId: "proj-1", name: "ナレーター1", engine: "voicevox", speakerId: "3" });
+    const result = await createHandler(
+      {},
+      {
+        projectId: "proj-1", name: "ナレーター1", engine: "voicevox", speakerId: "3",
+        sentencePauseMs: 300, settingsJson: '{"note":"x"}',
+      },
+    );
 
     expect(voiceProfileService.create).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: "proj-1", name: "ナレーター1", engine: "voicevox", speakerId: "3" }),
+      expect.objectContaining({
+        projectId: "proj-1", name: "ナレーター1", engine: "voicevox", speakerId: "3",
+        sentencePauseMs: 300, settingsJson: '{"note":"x"}',
+      }),
     );
     expect(result).toEqual(SAMPLE);
 
@@ -97,6 +111,21 @@ describe("TASK-BUILD-EXEC-001 voice-profile IPC handlers", () => {
       /unknown status/,
     );
     expect(voiceProfileService.update).toHaveBeenCalledTimes(1);
+
+    // engine/speakerId/styleId/pause/settings_jsonもupdate対象として渡せる(approved編集後もapproved維持、承認済み方針)。
+    await updateHandler(
+      {},
+      {
+        voiceProfileId: "vp-1", engine: "voicevox", speakerId: "8", styleId: "1",
+        paragraphPauseMs: 700, settingsJson: "{}",
+      },
+    );
+    expect(voiceProfileService.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        voiceProfileId: "vp-1", engine: "voicevox", speakerId: "8", styleId: "1",
+        paragraphPauseMs: 700, settingsJson: "{}",
+      }),
+    );
   });
 
   test("voice-profile:archive delegates to the service", async () => {

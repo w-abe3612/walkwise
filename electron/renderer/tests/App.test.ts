@@ -50,6 +50,13 @@ function installFakeWalkwiseApi() {
       listEngines: vi.fn().mockResolvedValue({ health: { engine: "voicevox", available: true }, speakers: [] }),
       preview: vi.fn(),
     },
+    voiceProfile: {
+      create: vi.fn().mockResolvedValue({ voiceProfileId: "vp-1", status: "draft" }),
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn(),
+      update: vi.fn().mockResolvedValue({ voiceProfileId: "vp-1", status: "approved" }),
+      archive: vi.fn().mockResolvedValue({ voiceProfileId: "vp-1", status: "archived" }),
+    },
     dialog: { selectSourceFile: vi.fn().mockResolvedValue({ filePath: "/abs/chapter01.txt", mediaType: "text" }) },
   };
   (globalThis as unknown as { walkwise: unknown }).walkwise = api;
@@ -95,8 +102,11 @@ describe("TASK-REVIEW-001 Renderer root(App.vue)がProject->Source->Approval->Bu
     });
   });
 
-  test("build-settingsへ遷移するとvoice.listEnginesが呼ばれる", async () => {
+  test("build-settingsへ遷移するとvoiceProfile.listがこのProject向けに呼ばれる", async () => {
     const api = installFakeWalkwiseApi();
+    (api.voiceProfile.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { voiceProfileId: "vp-1", name: "ナレーター1", status: "approved" },
+    ]);
     const wrapper = mount(App);
     await flushPromises();
     await wrapper.get('[data-testid="open-project-button"]').trigger("click");
@@ -105,8 +115,8 @@ describe("TASK-REVIEW-001 Renderer root(App.vue)がProject->Source->Approval->Bu
     await wrapper.get('[data-testid="nav-build-settings"]').trigger("click");
     await flushPromises();
 
-    expect(api.voice.listEngines).toHaveBeenCalledTimes(1);
-    expect(wrapper.find('[data-testid="engine-success"]').exists()).toBe(true);
+    expect(api.voiceProfile.list).toHaveBeenCalledWith("p1");
+    expect(wrapper.get('[data-testid="voice-profile-select"]').text()).toContain("ナレーター1");
   });
 
   test("jobsへ遷移するとjob.list/artifact.listが呼ばれ、cancelが実IPCへつながる", async () => {

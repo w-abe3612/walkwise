@@ -13,6 +13,29 @@ import { describe, expect, test, vi } from "vitest";
 import { resolveNavigation } from "../router";
 import { AppStore, AppStateValidationError } from "../stores/app";
 import AppShell from "../components/AppShell.vue";
+import ProjectWorkspace from "../screens/ProjectWorkspace.vue";
+
+function mountProjectWorkspaceForModal() {
+  return mount(ProjectWorkspace, {
+    attachTo: document.body,
+    props: {
+      sources: [],
+      approvals: [],
+      registerSource: vi.fn(),
+      retrySource: vi.fn(),
+      approve: vi.fn(),
+      requestChanges: vi.fn(),
+      selectSourceFile: vi.fn(),
+      voiceProfiles: [],
+      voiceEngineHealth: null,
+      voiceSpeakers: [{ speakerId: "3", displayName: "四国めたん", styleIds: [] }],
+      createVoiceProfile: vi.fn(),
+      updateVoiceProfile: vi.fn(),
+      approveVoiceProfile: vi.fn(),
+      archiveVoiceProfile: vi.fn(),
+    },
+  });
+}
 
 describe("TASK-UI-005 Renderer共通state・navigation・error・アクセシビリティ", () => {
   test("TC-UI-005-02: focus/error summary [unit/P0]", async () => {
@@ -58,5 +81,46 @@ describe("TASK-UI-005 Renderer共通state・navigation・error・アクセシビ
 
     expect(() => resolveNavigation(undefined as never)).toThrow();
     expect(() => resolveNavigation({ screen: "" })).toThrow();
+  });
+
+  test("TC-VOICE-PROFILE-UI-001-A11Y-01: VoiceProfile modalが開いた時、最初の入力欄へfocusが移動する", async () => {
+    const wrapper = mountProjectWorkspaceForModal();
+    await wrapper.get('[data-testid="voice-profile-add-button"]').trigger("click");
+    await flushPromises();
+
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="voice-profile-name-input"]').element);
+    wrapper.unmount();
+  });
+
+  test("TC-VOICE-PROFILE-UI-001-A11Y-02: labelとinputがforで関連付けられている", async () => {
+    const wrapper = mountProjectWorkspaceForModal();
+    await wrapper.get('[data-testid="voice-profile-add-button"]').trigger("click");
+
+    const nameInput = wrapper.get('[data-testid="voice-profile-name-input"]');
+    const nameInputId = nameInput.attributes("id")!;
+    expect(wrapper.find(`label[for="${nameInputId}"]`).exists()).toBe(true);
+
+    const speakerSelect = wrapper.get('[data-testid="voice-profile-speaker-select"]');
+    const speakerSelectId = speakerSelect.attributes("id")!;
+    expect(wrapper.find(`label[for="${speakerSelectId}"]`).exists()).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  test("TC-VOICE-PROFILE-UI-001-A11Y-03: Tabキーでmodal内をfocus trapし、外へは出ない", async () => {
+    const wrapper = mountProjectWorkspaceForModal();
+    await wrapper.get('[data-testid="voice-profile-add-button"]').trigger("click");
+    await flushPromises();
+
+    const modal = wrapper.get('[data-testid="voice-profile-modal"]');
+    const saveButton = wrapper.get('[data-testid="voice-profile-modal-save"]').element as HTMLElement;
+    saveButton.focus();
+    expect(document.activeElement).toBe(saveButton);
+
+    // 最後の要素でTabを押すと、modal外へ出ず先頭へ戻る(focus trap)。
+    await modal.trigger("keydown", { key: "Tab" });
+    expect(modal.element.contains(document.activeElement)).toBe(true);
+
+    wrapper.unmount();
   });
 });
